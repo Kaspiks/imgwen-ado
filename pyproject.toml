@@ -1,0 +1,21 @@
+[project]
+name = "imgwen-ado"
+version = "0.1.0"
+description = "Image editing / chat backend (SQLAlchemy + FastAPI)"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "sqlalchemy>=2.0.36",
+  "psycopg[binary]>=3.2",
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "pydantic-settings>=2.6.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
