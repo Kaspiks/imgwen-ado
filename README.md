@@ -1,5 +1,21 @@
 # imgwen-ado
 
+## Frontend (Vite + React)
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Dev server (default Vite port): `http://127.0.0.1:5173`.
+
+### Static UI in Docker (nginx on port 3000)
+
+```bash
+docker compose up --build web
+```
+
+Open `http://127.0.0.1:3000`. Combine with the API: `docker compose up --build web api` (plus `postgres` if the API should run in Compose).
+
 ## Local (Postgres etc. in Docker, app on host)
 
 ```bash

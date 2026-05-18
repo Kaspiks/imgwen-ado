@@ -1,4 +1,16 @@
 services:
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: app-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - app-network
+
   api:
     build:
       context: .
@@ -8,9 +20,23 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql+psycopg://app:app@postgres:5432/app_db
+      QDRANT_URL: http://qdrant:6333
+      # Alibaba MaaS / Model Studio — set in .env (see .env.example). Optional split: reasoning vs editing gateway.
+      DASHSCOPE_BASE_HTTP_API_URL: ${DASHSCOPE_BASE_HTTP_API_URL:-https://dashscope-intl.aliyuncs.com/api/v1}
+      DASHSCOPE_REASONING_BASE_HTTP_API_URL: ${DASHSCOPE_REASONING_BASE_HTTP_API_URL:-}
+      DASHSCOPE_EDITING_BASE_HTTP_API_URL: ${DASHSCOPE_EDITING_BASE_HTTP_API_URL:-}
+      DASHSCOPE_OPENAI_COMPATIBLE_BASE_URL: ${DASHSCOPE_OPENAI_COMPATIBLE_BASE_URL:-}
+      DASHSCOPE_OPENAI_RESPONSES_BASE_URL: ${DASHSCOPE_OPENAI_RESPONSES_BASE_URL:-}
+      DASHSCOPE_PLANNER_ENABLE_THINKING: ${DASHSCOPE_PLANNER_ENABLE_THINKING:-false}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+      DASHSCOPE_OPENAI_API_KEY: ${DASHSCOPE_OPENAI_API_KEY:-}
+      DASHSCOPE_REASONING_API_KEY: ${DASHSCOPE_REASONING_API_KEY:-}
+      DASHSCOPE_EDITING_API_KEY: ${DASHSCOPE_EDITING_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+      qdrant:
+        condition: service_started
     networks:
       - app-network
 
