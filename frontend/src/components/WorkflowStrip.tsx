@@ -69,7 +69,6 @@ export function WorkflowStrip({ className = "" }: { className?: string }) {
           proOptions={{ hideAttribution: true }}
         >
           <Background gap={12} color="#e4e4e7" />
-          <Controls showInteractive={false} className="!shadow-none" />
         </ReactFlow>
       </ReactFlowProvider>
     </div>
