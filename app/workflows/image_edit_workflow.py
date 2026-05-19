@@ -130,14 +130,56 @@ def run_image_edit_workflow(
         f"- {row}" for row in retrieved[: min(8, len(retrieved))]
     )
 
+    # Use the vision model to extract a precise color description from each staged reference.
+    # This avoids passing portrait references directly to the edit model (which causes identity drift).
+    staged_color_descriptions: list[str] = []
+    for i, ref_url in enumerate(merged, start=1):
+        try:
+            color_desc = dq.multimodal_chat_text(
+                api_key=reasoning_key,
+                base_http_api_url=reasoning_base,
+                model=settings.qwen_vision_model,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"image": ref_url},
+                            {"text": (
+                                "Describe ONLY the hair color and texture in this image. "
+                                "Be precise: hue family, temperature (cool/warm/neutral), "
+                                "saturation (muted/natural/vivid), lightness (dark/mid/light), "
+                                "and any variation (highlights, lowlights, roots). "
+                                "Do not describe the person's face, skin, or identity. "
+                                "Reply in 1–2 sentences."
+                            )},
+                        ],
+                    }
+                ],
+            )
+            staged_color_descriptions.append(f"Reference {i} color: {color_desc.strip()}")
+        except Exception as exc:
+            warnings.append(f"Could not extract color from reference {i}: {exc}")
+
+    ref_color_text = "\n".join(staged_color_descriptions) if staged_color_descriptions else "(none)"
+
+    n_refs = len(merged)
+    image_roles = (
+        "Image 1 is the base person (ground truth). "
+        + (
+            f"Image{'s' if n_refs > 1 else ''} 2{'–' + str(n_refs + 1) if n_refs > 1 else ''} "
+            "are color/style references ONLY — do not copy faces, body shape, or identity from them."
+            if n_refs > 0 else ""
+        )
+    )
+
     planner_system = (
         "You are an edit planner for a surgical image editor (qwen-image-edit-max). "
         "Output one JSON object only, no markdown. "
         'Schema: {"final_image_edit_prompt": string, "reference_roles": string[], "notes": string}\n\n'
         "Structure of final_image_edit_prompt — exactly two parts in this order:\n"
-        "PART 1 (identity lock, always first, verbatim): "
-        "'Preserve the exact same person, facial features, face shape, expression, skin tone, "
-        "pose, hairstyle shape and length, clothing, and background. Do not regenerate the person.'\n\n"
+        f"PART 1 (identity lock, always first, verbatim): '{image_roles} "
+        "Preserve the exact same person from Image 1: their facial features, face shape, expression, "
+        "skin tone, pose, hairstyle shape and length, clothing, and background. Do not regenerate the person.'\n\n"
         "PART 2 (the change, one sentence, max 35 words): describe ONLY the targeted attribute "
         "(e.g. hair color). Be specific about color science:\n"
         "- exact hue family (e.g. ash brown, copper auburn, platinum, honey blonde)\n"
@@ -152,11 +194,10 @@ def run_image_edit_workflow(
     planner_user = (
         f"User request / dialogue:\n{user_prompt}\n\n"
         f"Vision analysis of base image (for color context only, do not echo descriptions of the person):\n{reasoning}\n\n"
-        f"User-supplied reference image URLs (may be empty):\n{chr(10).join(staged) if staged else '(none)'}\n\n"
+        f"Color descriptions extracted from reference images by vision model:\n{ref_color_text}\n\n"
         f"Retrieved reference styles from vector DB (may be empty):\n{ref_context or '(none)'}\n\n"
-        "Build final_image_edit_prompt with PART 1 first (identity lock), then PART 2 (the precise color change "
-        "informed by the references). If multiple reference images are attached, name roles in PART 2 "
-        "(Image 1 = base, Image 2+ = color references)."
+        "Build final_image_edit_prompt with PART 1 first (identity lock including image roles), "
+        "then PART 2 (the precise color change informed by the extracted color descriptions above)."
     )
 
     plan, planner_reasoning = dq.text_json_completion(
