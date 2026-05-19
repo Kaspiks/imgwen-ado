@@ -31,7 +31,7 @@ def run_image_edit_workflow(
     staged_reference_urls: Optional[list[str]] = None,
     reasoning_override: Optional[dict[str, Any]] = None,
     edit_watermark: bool = True,
-    edit_negative_prompt: str = "",
+    edit_negative_prompt: str = "oversaturated, vivid, orange tint, unnatural color cast, artificial dye look, skin tone change, clothing change, outfit change",
 ) -> ImageEditWorkflowResult:
     """
     Orchestrates: vision (MultiModalConversation + qwen-vl-*) → Qdrant (text-embedding-v*) →
@@ -131,25 +131,32 @@ def run_image_edit_workflow(
     )
 
     planner_system = (
-        "You are an edit planner for an image editor. Output one JSON object only, no markdown. "
-        "Schema: "
-        '{"final_image_edit_prompt": string, "reference_roles": string[], "notes": string}\n\n'
-        "When writing final_image_edit_prompt, follow these rules:\n"
-        "- Match the reference color's exact tone (cool vs warm, muted vs vivid) — do not default to warm or saturated.\n"
-        "- Explicitly state 'low saturation, natural-looking' if the reference hair appears muted or sun-bleached.\n"
-        "- Preserve tonal variation, highlights, and texture from the reference — avoid uniform flat color.\n"
-        "- If avoiding a specific artifact (e.g. orange cast, artificial dye look), name it explicitly as something to avoid."
+        "You are an edit planner for a surgical image editor (qwen-image-edit-max). "
+        "Output one JSON object only, no markdown. "
+        'Schema: {"final_image_edit_prompt": string, "reference_roles": string[], "notes": string}\n\n'
+        "Structure of final_image_edit_prompt — exactly two parts in this order:\n"
+        "PART 1 (identity lock, always first, verbatim): "
+        "'Preserve the exact same person, facial features, face shape, expression, skin tone, "
+        "pose, hairstyle shape and length, clothing, and background. Do not regenerate the person.'\n\n"
+        "PART 2 (the change, one sentence, max 35 words): describe ONLY the targeted attribute "
+        "(e.g. hair color). Be specific about color science:\n"
+        "- exact hue family (e.g. ash brown, copper auburn, platinum, honey blonde)\n"
+        "- temperature (cool / neutral / warm)\n"
+        "- saturation (muted / natural / vivid)\n"
+        "- lightness (dark / mid / light)\n"
+        "- variation (highlights, lowlights, roots) when visible in the reference\n"
+        "Match the reference color exactly when one is provided; do not default to warm or saturated tones. "
+        "Name avoidances explicitly (e.g. 'avoid orange cast, avoid artificial dye look')."
     )
 
     planner_user = (
-        f"User request / dialogue context:\n{user_prompt}\n\n"
-        f"Vision analysis (JSON):\n{reasoning}\n\n"
+        f"User request / dialogue:\n{user_prompt}\n\n"
+        f"Vision analysis of base image (for color context only, do not echo descriptions of the person):\n{reasoning}\n\n"
         f"User-supplied reference image URLs (may be empty):\n{chr(10).join(staged) if staged else '(none)'}\n\n"
-        f"Retrieved reference rows from vector DB (may be empty):\n{ref_context or '(none)'}\n\n"
-        "Write `final_image_edit_prompt` as a single clear instruction for an image-edit model. "
-        "Name roles if multiple reference images are used (Image 1 = base, Image 2+ = references). "
-        "Describe the target color precisely — include tone (warm/cool/neutral), saturation level (muted/natural/vivid), "
-        "and any variation like highlights or roots. Mention what to avoid if the reference is subtle or natural-looking."
+        f"Retrieved reference styles from vector DB (may be empty):\n{ref_context or '(none)'}\n\n"
+        "Build final_image_edit_prompt with PART 1 first (identity lock), then PART 2 (the precise color change "
+        "informed by the references). If multiple reference images are attached, name roles in PART 2 "
+        "(Image 1 = base, Image 2+ = color references)."
     )
 
     plan, planner_reasoning = dq.text_json_completion(
@@ -162,18 +169,45 @@ def run_image_edit_workflow(
 
     final_prompt = str(plan.get("final_image_edit_prompt") or user_prompt)
 
-    edited_urls = dq.run_image_edit(
-        api_key=editing_key,
-        base_http_api_url=editing_base,
-        model=settings.qwen_image_edit_model,
-        base_image_url=base_image_url,
-        reference_image_urls=merged,
-        edit_prompt=final_prompt,
-        n=edit_n,
-        size=edit_size,
-        watermark=edit_watermark,
-        negative_prompt=edit_negative_prompt,
-    )
+    def _do_edit(prompt: str, refs: list[str]) -> list[str]:
+        return dq.run_image_edit(
+            api_key=editing_key,
+            base_http_api_url=editing_base,
+            model=settings.qwen_image_edit_model,
+            base_image_url=base_image_url,
+            reference_image_urls=refs,
+            edit_prompt=prompt,
+            n=edit_n,
+            size=edit_size,
+            watermark=edit_watermark,
+            negative_prompt=edit_negative_prompt,
+        )
+
+    def _try_edit(prompt: str, refs: list[str]) -> list[str] | None:
+        """Returns None if the content filter fires, raises on any other error."""
+        try:
+            return _do_edit(prompt, refs)
+        except RuntimeError as exc:
+            if "inappropriate content" in str(exc).lower():
+                return None
+            raise RuntimeError(f"{exc}\n\nEdit prompt that was sent:\n{prompt}") from exc
+
+    edited_urls = _try_edit(final_prompt, merged)
+
+    if edited_urls is None:
+        warnings.append(f"Content filter rejected with refs; retrying without references. Prompt: {final_prompt!r}")
+        edited_urls = _try_edit(final_prompt, [])
+
+    if edited_urls is None:
+        warnings.append("Content filter still rejected; retrying with raw user prompt.")
+        edited_urls = _try_edit(user_prompt, [])
+
+    if edited_urls is None:
+        raise RuntimeError(
+            f"Content filter rejected all attempts.\n"
+            f"Planner prompt: {final_prompt!r}\n"
+            f"User prompt: {user_prompt!r}"
+        )
 
     critique: Optional[dict[str, Any]] = None
 

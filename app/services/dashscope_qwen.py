@@ -5,9 +5,15 @@ import re
 from typing import Any, Mapping, MutableMapping, Sequence, Union
 
 import dashscope
-from dashscope import Generation, MultiModalConversation, TextEmbedding
+from dashscope import Generation, ImageSynthesis, MultiModalConversation, TextEmbedding
+from dashscope.common.error import DashScopeException
 
 ContentPart = Mapping[str, Any]
+
+
+def format_dashscope_sdk_error(exc: BaseException) -> str:
+    """Readable message from dashscope SDK exceptions (InvalidTask, ApiException, etc.)."""
+    return str(exc).strip() or type(exc).__name__
 
 
 def configure_dashscope(api_key: str, base_http_api_url: str) -> None:
@@ -105,6 +111,10 @@ def _model_not_exist_hint(step: str) -> str:
         model_var = "QWEN_IMAGE_EDIT_MODEL"
         api = "MultiModalConversation (image edit)"
 
+    elif step_lower == "image_generation":
+        model_var = "QWEN_IMAGE_GENERATION_MODEL"
+        api = "ImageGeneration (wan2.6-t2i) or ImageSynthesis (legacy wanx)"
+
     else:
         model_var = "QWEN_VISION_MODEL, QWEN_TEXT_MODEL, QWEN_IMAGE_EDIT_MODEL"
         api = "DashScope"
@@ -136,6 +146,23 @@ def _require_ok(resp: MutableMapping[str, Any], step: str) -> None:
 
     if "model not exist" in low or (inner_code or "").lower() in ("invalidparameter", "model.notfound"):
         lines.append(_model_not_exist_hint(step))
+
+    if "url error" in low and step.lower() == "image_generation":
+        lines.append(
+            "wan2.6-t2i uses ImageGeneration on the public DashScope endpoint "
+            "(https://dashscope-intl.aliyuncs.com/api/v1), not workspace MaaS URLs. "
+            "Set DASHSCOPE_GENERATION_BASE_HTTP_API_URL and DASHSCOPE_GENERATION_API_KEY "
+            "(or DASHSCOPE_OPENAI_API_KEY) to your intl pay-as-you-go sk-... key. "
+            "Also upgrade dashscope SDK to >= 1.25.8."
+        )
+
+    if "inappropriate content" in low or (inner_code or "").lower() in ("datainspectionfailed", "content_filter"):
+        lines.append(
+            "DashScope's content filter rejected the request. Common causes: the edit prompt "
+            "describes changes to a person's appearance (hair, skin, face), the base image "
+            "contains a person, or a reference image triggered the filter. Try simplifying the "
+            "prompt or removing reference images."
+        )
 
     raise RuntimeError("\n".join(lines))
 
@@ -378,11 +405,14 @@ def multimodal_chat_text(
 ) -> str:
     _apply_dashscope_endpoint(api_key, base_http_api_url)
 
-    resp = MultiModalConversation.call(
-        api_key=api_key,
-        model=model,
-        messages=messages,
-    )
+    try:
+        resp = MultiModalConversation.call(
+            api_key=api_key,
+            model=model,
+            messages=messages,
+        )
+    except DashScopeException as exc:
+        raise RuntimeError(f"multimodal_chat failed: {format_dashscope_sdk_error(exc)}") from exc
 
     _require_ok(resp, "multimodal_chat")
 
@@ -445,7 +475,7 @@ def text_json_completion(
     responses_base = (app_settings.dashscope_openai_responses_base_url or "").strip()
 
     if responses_base:
-        from openai import OpenAI
+        from openai import OpenAI, OpenAIError
 
         client = OpenAI(api_key=openai_key, base_url=responses_base.rstrip("/"))
 
@@ -458,15 +488,17 @@ def text_json_completion(
         if app_settings.dashscope_planner_enable_thinking:
             create_kw["extra_body"] = {"enable_thinking": True}
 
-        resp = client.responses.create(**create_kw)
+        try:
+            resp = client.responses.create(**create_kw)
+        except OpenAIError as e:
+            raise RuntimeError(f"Responses API error: {e}") from e
+
         reasoning = responses_reasoning_text(resp)
         raw = responses_assistant_text(resp).strip()
 
         try:
             return parse_json_object(raw), reasoning
-
         except json.JSONDecodeError as e:
-
             raise RuntimeError(
                 f"Responses model returned non-JSON (first 400 chars): {raw[:400]!r}"
             ) from e
@@ -474,23 +506,25 @@ def text_json_completion(
     compat = (app_settings.dashscope_openai_compatible_base_url or "").strip()
 
     if compat:
-        from openai import OpenAI
+        from openai import OpenAI, OpenAIError
 
         client = OpenAI(api_key=openai_key, base_url=compat.rstrip("/"))
 
-        completion = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        )
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+        except OpenAIError as e:
+            raise RuntimeError(f"OpenAI-compatible API error: {e}") from e
 
         raw = (completion.choices[0].message.content or "").strip()
 
         try:
             return parse_json_object(raw), None
-
         except json.JSONDecodeError as e:
             raise RuntimeError(
                 f"OpenAI-compatible model returned non-JSON (first 400 chars): {raw[:400]!r}"
@@ -511,6 +545,73 @@ def text_json_completion(
     _require_ok(resp, "Generation")
 
     return parse_json_object(generation_assistant_text(resp)), None
+
+
+def _uses_wan_image_generation_api(model: str) -> bool:
+    """wan2.6+ text-to-image uses ImageGeneration; older wanx uses ImageSynthesis."""
+    m = model.lower()
+    return m.startswith("wan2.6") or m.startswith("wan2.5")
+
+
+def generate_image_from_text(
+    *,
+    api_key: str,
+    base_http_api_url: str,
+    model: str,
+    prompt: str,
+    n: int = 1,
+    size: str = "1024*1024",
+) -> list[str]:
+    _apply_dashscope_endpoint(api_key, base_http_api_url)
+
+    if _uses_wan_image_generation_api(model):
+        try:
+            from dashscope.aigc.image_generation import ImageGeneration
+            from dashscope.api_entities.dashscope_response import Message
+        except ImportError as exc:
+            raise RuntimeError(
+                "wan2.6 text-to-image requires dashscope>=1.25.8 (ImageGeneration SDK). "
+                "Run: pip install -U 'dashscope>=1.25.8'"
+            ) from exc
+
+        message = Message(role="user", content=[{"text": prompt}])
+        try:
+            resp = ImageGeneration.call(
+                api_key=api_key,
+                model=model,
+                messages=[message],
+                negative_prompt="",
+                prompt_extend=True,
+                watermark=False,
+                n=n,
+                size=size,
+            )
+        except DashScopeException as exc:
+            raise RuntimeError(f"image_generation failed: {format_dashscope_sdk_error(exc)}") from exc
+        _require_ok(resp, "image_generation")
+        urls = multimodal_output_image_urls(resp)
+        if urls:
+            return urls
+        raise RuntimeError("image_generation response missing output image URLs")
+
+    try:
+        resp = ImageSynthesis.call(
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            n=n,
+            size=size,
+        )
+    except DashScopeException as exc:
+        raise RuntimeError(f"image_generation failed: {format_dashscope_sdk_error(exc)}") from exc
+    _require_ok(resp, "image_generation")
+    output = resp.get("output") or {}
+    results = output.get("results") or []
+    urls: list[str] = []
+    for r in results:
+        if isinstance(r, dict) and r.get("url"):
+            urls.append(str(r["url"]))
+    return urls
 
 
 def run_image_edit(

@@ -54,7 +54,15 @@ def _session_out(db: Session, session_id: int) -> EditFlowSessionOut:
         phase=s.phase.value,
         base_image_url=s.base_image_url,
         reference_urls=list(s.reference_urls or []),
-        messages=[EditFlowMessageOut(id=m.id, role=m.role, content=m.content) for m in msgs],
+        messages=[
+            EditFlowMessageOut(
+                id=m.id,
+                role=m.role,
+                content=m.content,
+                reference_urls=list(m.reference_urls or []),
+            )
+            for m in msgs
+        ],
         last_edit_result=s.last_edit_result,
     )
 
@@ -165,7 +173,7 @@ def get_session(session_id: int, db: Session = Depends(get_db)) -> EditFlowSessi
 @router.post("/sessions/{session_id}/chat", response_model=EditFlowChatResponse)
 def post_chat(session_id: int, body: EditFlowChatRequest, db: Session = Depends(get_db)) -> EditFlowChatResponse:
     try:
-        assistant, phase, requested = efs.post_chat_turn(
+        assistant, phase, requested, generated = efs.post_chat_turn(
             db, session_id=session_id, user_message=body.message
         )
     except KeyError:
@@ -181,6 +189,7 @@ def post_chat(session_id: int, body: EditFlowChatRequest, db: Session = Depends(
         assistant_message=assistant,
         phase=phase.value,
         requested_references=requested,
+        generated_reference_urls=generated,
     )
 
 

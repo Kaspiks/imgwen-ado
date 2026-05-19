@@ -17,6 +17,10 @@ class EditFlowMessageOut(BaseModel):
     id: int
     role: str
     content: str
+    reference_urls: list[str] = Field(
+        default_factory=list,
+        description="Reference images attached to this message (e.g. AI-generated options)",
+    )
 
 
 class EditFlowSessionOut(BaseModel):
@@ -38,6 +42,10 @@ class EditFlowChatResponse(BaseModel):
     requested_references: bool = Field(
         ...,
         description="True when the model asked for reference images for the edit step",
+    )
+    generated_reference_urls: list[str] = Field(
+        default_factory=list,
+        description="Reference images the assistant generated proactively this turn",
     )
 
 

@@ -11,22 +11,43 @@ from app.services import dashscope_qwen as dq
 from app.workflows.image_edit_workflow import run_image_edit_workflow
 
 REF_REQUEST_MARKER = "[[REQUEST_REFERENCES]]"
+GEN_REFS_MARKER = "[[GENERATE_REFERENCES]]"
 
 REASONING_CHAT_SYSTEM = (
     "You are a vision-language assistant helping the user plan an image edit. You can see the base image "
-    "in every user message. Discuss goals, constraints, style, and feasibility. "
-    "When you need the user to attach 1–2 reference images for the downstream image-edit model, "
-    "end your reply with a single line containing exactly:\n"
-    f"{REF_REQUEST_MARKER}\n"
-    "Put that marker on its own line with nothing else on that line. "
-    "Do not claim the pixels have already been edited until the pipeline runs after references."
+    "in every user message. Discuss goals, constraints, style, and feasibility.\n\n"
+    "When you need the user to attach 1–2 reference images, end your reply with a single line containing exactly:\n"
+    f"{REF_REQUEST_MARKER}\n\n"
+    "When the user is undecided and would benefit from seeing concrete options, you may proactively "
+    "propose 2–3 specific looks tailored to their features and offer to generate visual references. "
+    "If they accept, or if you are confident the suggestion is useful, end your reply with:\n"
+    f"{GEN_REFS_MARKER}\n"
+    "<one short visual prompt per line, max 3 lines>\n"
+    "Each line must be a concrete text-to-image prompt (e.g. 'warm chestnut brown shoulder-length hair, "
+    "natural matte finish, subtle caramel highlights, soft natural lighting, portrait photography'). "
+    "Use rich descriptors for color, lighting, and style — these become reference images for the edit.\n\n"
+    "Put markers on their own line. Do not include both markers in the same reply. "
+    "Do not claim the pixels have already been edited until the pipeline runs."
 )
 
 
-def _strip_ref_marker(text: str) -> tuple[str, bool]:
+def _parse_chat_markers(text: str) -> tuple[str, bool, list[str]]:
+    """Returns (cleaned_text, requested_user_refs, generation_prompts)."""
     requested = REF_REQUEST_MARKER in text
-    cleaned = text.replace(REF_REQUEST_MARKER, "").strip()
-    return cleaned, requested
+    generation_prompts: list[str] = []
+
+    if GEN_REFS_MARKER in text:
+        before, _, after = text.partition(GEN_REFS_MARKER)
+        for line in after.splitlines():
+            line = line.strip().lstrip("-*0123456789.) ").strip()
+            if line and not line.startswith("[["):
+                generation_prompts.append(line)
+            if len(generation_prompts) >= 3:
+                break
+        text = before
+
+    cleaned = text.replace(REF_REQUEST_MARKER, "").replace(GEN_REFS_MARKER, "").strip()
+    return cleaned, requested, generation_prompts
 
 
 def _build_multimodal_messages(
@@ -110,8 +131,16 @@ def list_session_messages(db: Session, session_id: int) -> list[EditFlowMessage]
     return list(db.scalars(q).all())
 
 
-def append_edit_flow_message(db: Session, *, session_id: int, role: str, content: str) -> EditFlowMessage:
-    row = EditFlowMessage(session_id=session_id, role=role, content=content)
+def append_edit_flow_message(
+    db: Session,
+    *,
+    session_id: int,
+    role: str,
+    content: str,
+    reference_urls: list[str] | None = None,
+) -> EditFlowMessage:
+    refs = [u for u in (reference_urls or []) if isinstance(u, str) and u.strip()]
+    row = EditFlowMessage(session_id=session_id, role=role, content=content, reference_urls=refs)
 
     db.add(row)
     db.commit()
@@ -120,7 +149,9 @@ def append_edit_flow_message(db: Session, *, session_id: int, role: str, content
     return row
 
 
-def post_chat_turn(db: Session, *, session_id: int, user_message: str) -> tuple[str, EditFlowPhase, bool]:
+def post_chat_turn(
+    db: Session, *, session_id: int, user_message: str
+) -> tuple[str, EditFlowPhase, bool, list[str]]:
     session = get_edit_flow_session(db, session_id)
 
     if session is None:
@@ -149,17 +180,43 @@ def post_chat_turn(db: Session, *, session_id: int, user_message: str) -> tuple[
         messages=msgs,
     )
 
-    assistant_clean, requested_refs = _strip_ref_marker(raw)
-    append_edit_flow_message(db, session_id=session_id, role="assistant", content=assistant_clean)
+    assistant_clean, requested_refs, gen_prompts = _parse_chat_markers(raw)
 
-    if requested_refs:
+    generated_urls: list[str] = []
+    if gen_prompts:
+        gen_key = settings.dashscope_generation_key()
+        for p in gen_prompts:
+            try:
+                urls = dq.generate_image_from_text(
+                    api_key=gen_key,
+                    base_http_api_url=settings.dashscope_generation_base(),
+                    model=settings.qwen_image_generation_model,
+                    prompt=p,
+                    n=1,
+                )
+                generated_urls.extend(urls)
+            except RuntimeError as exc:
+                msg = str(exc).strip() or "image generation failed"
+                assistant_clean += f"\n\n[Could not generate reference for '{p[:60]}...': {msg}]"
+
+    append_edit_flow_message(
+        db,
+        session_id=session_id,
+        role="assistant",
+        content=assistant_clean,
+        reference_urls=generated_urls,
+    )
+
+    if requested_refs or generated_urls:
         session.phase = EditFlowPhase.awaiting_references
+
+    if requested_refs or generated_urls:
         db.add(session)
         db.commit()
 
     db.refresh(session)
 
-    return assistant_clean, session.phase, requested_refs
+    return assistant_clean, session.phase, requested_refs, generated_urls
 
 
 def set_session_references(db: Session, *, session_id: int, urls: list[str]) -> EditFlowSession:

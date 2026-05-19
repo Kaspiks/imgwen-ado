@@ -58,6 +58,7 @@ class EditFlowMessage(Base):
 
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    reference_urls: Mapped[list[str]] = mapped_column(JSON, nullable=False, server_default=text("'[]'"))
 
     session_id: Mapped[int] = mapped_column(
         ForeignKey("edit_flow_sessions.id", ondelete="CASCADE"),

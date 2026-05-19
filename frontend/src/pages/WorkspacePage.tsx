@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "../components/Card";
+import { ChatReferencePicker } from "../components/ChatReferencePicker";
 import { MOCKUPS } from "../mockups";
 import { API_BASE } from "../lib/api";
 
 const API = API_BASE;
 
-type ChatMsg = { id: number; role: string; content: string };
+type ChatMsg = { id: number; role: string; content: string; reference_urls?: string[] };
 
 type SessionPayload = {
   id: number;
@@ -65,6 +66,8 @@ export function WorkspacePage() {
   const [error, setError] = useState<string | null>(null);
   const [editUrls, setEditUrls] = useState<string[]>([]);
   const [requestedRefs, setRequestedRefs] = useState(false);
+  const [savedRefUrls, setSavedRefUrls] = useState<string[]>([]);
+  const [selectedRefUrls, setSelectedRefUrls] = useState<string[]>([]);
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">("checking");
   const [libraryMsg, setLibraryMsg] = useState<{ slot: "a" | "b"; text: string } | null>(null);
 
@@ -104,6 +107,8 @@ export function WorkspacePage() {
     setMessages(s.messages);
     setBaseImageUrl(s.base_image_url);
     const r = s.reference_urls || [];
+    setSavedRefUrls(r);
+    setSelectedRefUrls(r);
     if (r[0]?.startsWith("data:image")) {
       setRefAEmbedded(r[0]);
       setRefAUrl("");
@@ -166,6 +171,8 @@ export function WorkspacePage() {
     setLoading(true);
     setEditUrls([]);
     setRequestedRefs(false);
+    setSavedRefUrls([]);
+    setSelectedRefUrls([]);
     try {
       const res = await fetch(`${API}/workflow/edit-flow/sessions`, {
         method: "POST",
@@ -228,18 +235,44 @@ export function WorkspacePage() {
     }
   };
 
-  const saveReferences = async () => {
+  const chatReferenceUrls = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const m of messages) {
+      for (const u of m.reference_urls || []) {
+        if ((u.startsWith("http") || u.startsWith("data:image")) && !seen.has(u)) {
+          seen.add(u);
+          out.push(u);
+        }
+      }
+    }
+    return out;
+  }, [messages]);
+
+  const toggleRefSelection = (url: string) => {
+    setSelectedRefUrls((prev) => {
+      if (prev.includes(url)) return prev.filter((u) => u !== url);
+      if (prev.length >= 2) return prev;
+      return [...prev, url];
+    });
+  };
+
+  const selectionDirty = useMemo(() => {
+    if (selectedRefUrls.length !== savedRefUrls.length) return true;
+    const saved = new Set(savedRefUrls);
+    return selectedRefUrls.some((u) => !saved.has(u));
+  }, [selectedRefUrls, savedRefUrls]);
+
+  const applySelectedReferences = async (urls: string[]) => {
     if (!sessionId) return;
     setError(null);
     setLoading(true);
-    const urls = [refAEmbedded || refAUrl.trim(), refBEmbedded || refBUrl.trim()].filter(
-      (u) => u.startsWith("http") || u.startsWith("data:image"),
-    );
+    const normalized = urls.filter((u) => u.startsWith("http") || u.startsWith("data:image")).slice(0, 2);
     try {
       const res = await fetch(`${API}/workflow/edit-flow/sessions/${sessionId}/references`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ urls }),
+        body: JSON.stringify({ urls: normalized }),
       });
       if (!res.ok) throw new Error(await readError(res));
       await syncSession(sessionId);
@@ -248,6 +281,19 @@ export function WorkspacePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearSelectedReferences = async () => {
+    setSelectedRefUrls([]);
+    await applySelectedReferences([]);
+  };
+
+  const saveReferences = async () => {
+    await applySelectedReferences(
+      [refAEmbedded || refAUrl.trim(), refBEmbedded || refBUrl.trim()].filter(
+        (u) => u.startsWith("http") || u.startsWith("data:image"),
+      ),
+    );
   };
 
   const saveRefToLibrary = async (slot: "a" | "b") => {
@@ -406,8 +452,19 @@ export function WorkspacePage() {
 
         {requestedRefs || phase === "awaiting_references" ? (
           <div className="border-b border-amber-100 bg-amber-50/80 px-5 py-3">
-            <p className="mb-2 text-xs font-semibold text-amber-900">References for image-edit model (max 2)</p>
-            <p className="mb-2 text-[11px] text-amber-800/90">HTTPS URL or upload a file for each slot.</p>
+            <p className="mb-2 text-xs font-semibold text-amber-900">
+              {chatReferenceUrls.length > 0
+                ? "Or upload your own references (max 2)"
+                : "References for image-edit model (max 2)"}
+            </p>
+            {chatReferenceUrls.length > 0 ? (
+              <p className="mb-2 text-[11px] text-amber-800/90">
+                Generated options appear in the chat above — select the ones you want, then click Use
+                selected.
+              </p>
+            ) : (
+              <p className="mb-2 text-[11px] text-amber-800/90">HTTPS URL or upload a file for each slot.</p>
+            )}
             <div className="mb-2 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -547,10 +604,48 @@ export function WorkspacePage() {
                     : "mr-auto border border-zinc-200 bg-zinc-50 text-zinc-800"
                 }`}
               >
-                <p className="whitespace-pre-wrap">{m.content}</p>
+                {m.content.trim() ? <p className="whitespace-pre-wrap">{m.content}</p> : null}
+                {m.role === "assistant" && (m.reference_urls?.length ?? 0) > 0 ? (
+                  <ChatReferencePicker
+                    urls={m.reference_urls ?? []}
+                    selected={selectedRefUrls}
+                    saved={savedRefUrls}
+                    disabled={loading}
+                    onToggle={toggleRefSelection}
+                  />
+                ) : null}
               </div>
             );
           })}
+          {chatReferenceUrls.length > 0 && phase !== "edit_completed" ? (
+            <div className="mr-auto max-w-[90%] rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs text-zinc-600">
+                {selectedRefUrls.length === 0
+                  ? "No references selected — the edit will run without style references."
+                  : `${selectedRefUrls.length} reference${selectedRefUrls.length === 1 ? "" : "s"} selected for the edit.`}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={loading || !sessionId || !selectionDirty}
+                  onClick={() => void applySelectedReferences(selectedRefUrls)}
+                  className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#4f4ddb] disabled:opacity-40"
+                >
+                  Use selected ({selectedRefUrls.length}/2)
+                </button>
+                {savedRefUrls.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={loading || !sessionId}
+                    onClick={() => void clearSelectedReferences()}
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-40"
+                  >
+                    Clear references
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-zinc-100 p-4">
