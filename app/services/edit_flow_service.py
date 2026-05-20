@@ -104,11 +104,22 @@ def _transcript(messages: list[EditFlowMessage]) -> str:
     return "\n".join(lines)
 
 
-def create_edit_flow_session(db: Session, *, base_image_url: str) -> EditFlowSession:
+def create_edit_flow_session(
+    db: Session,
+    *,
+    base_image_url: str,
+    preloaded_reference_url: Optional[str] = None,
+) -> EditFlowSession:
+    refs: list[str] = []
+    if preloaded_reference_url:
+        url = preloaded_reference_url.strip()
+        if url.startswith("http") or url.startswith("data:image"):
+            refs.append(url)
+
     row = EditFlowSession(
         base_image_url=base_image_url.strip(),
         phase=EditFlowPhase.chatting,
-        reference_urls=[],
+        reference_urls=refs,
     )
 
     db.add(row)

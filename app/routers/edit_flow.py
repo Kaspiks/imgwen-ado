@@ -161,7 +161,11 @@ def post_ingest_reference(body: ReferenceIngestRequest) -> ReferenceIngestRespon
 
 @router.post("/sessions", response_model=EditFlowSessionOut)
 def create_session(body: EditFlowSessionCreate, db: Session = Depends(get_db)) -> EditFlowSessionOut:
-    row = efs.create_edit_flow_session(db, base_image_url=body.base_image_url)
+    row = efs.create_edit_flow_session(
+        db,
+        base_image_url=body.base_image_url,
+        preloaded_reference_url=body.preloaded_reference_url,
+    )
     return _session_out(db, row.id)
 
 

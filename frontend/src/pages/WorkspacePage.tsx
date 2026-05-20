@@ -1,11 +1,96 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Card } from "../components/Card";
 import { ChatReferencePicker } from "../components/ChatReferencePicker";
+import { CreateProjectModal } from "../components/CreateProjectModal";
 import { MOCKUPS } from "../mockups";
 import { API_BASE } from "../lib/api";
 
 const API = API_BASE;
+
+type ProjectItem = {
+  id: number;
+  project_name: string;
+  status: string;
+  creation_date: string;
+  total_edits: number;
+};
+
+const STATUS_STYLE: Record<string, string> = {
+  active: "bg-emerald-50 text-emerald-700",
+  draft: "bg-zinc-100 text-zinc-600",
+  archived: "bg-amber-50 text-amber-700",
+};
+
+function ProjectPicker() {
+  const [, setSearchParams] = useSearchParams();
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/projects`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ projects: ProjectItem[] }>) : Promise.reject()))
+      .then((d) => setProjects(d.projects))
+      .catch(() => setProjects([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const pick = (id: number) => setSearchParams({ projectId: String(id) });
+
+  return (
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center bg-[#f4f4f7] px-4">
+      <div className="w-full max-w-lg">
+        <h1 className="text-2xl font-bold text-zinc-900">Select a project</h1>
+        <p className="mt-1 text-sm text-zinc-500">Pick an existing project or create a new one to start editing.</p>
+
+        <div className="mt-6 flex flex-col gap-3">
+          {loading && (
+            <p className="py-8 text-center text-sm text-zinc-400">Loading projects…</p>
+          )}
+
+          {!loading && projects.length === 0 && (
+            <p className="py-8 text-center text-sm text-zinc-400">No projects yet. Create your first one below.</p>
+          )}
+
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => pick(p.id)}
+              className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-left shadow-sm transition hover:border-accent/40 hover:shadow-md"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-zinc-900">{p.project_name}</p>
+                <p className="mt-0.5 text-xs text-zinc-400">
+                  {new Date(p.creation_date).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                  {p.total_edits > 0 && <> · {p.total_edits} edit{p.total_edits !== 1 && "s"}</>}
+                </p>
+              </div>
+              <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_STYLE[p.status] ?? "bg-zinc-100 text-zinc-600"}`}>
+                {p.status}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          className="mt-4 w-full rounded-2xl border-2 border-dashed border-zinc-300 bg-white py-4 text-sm font-semibold text-zinc-600 transition hover:border-accent hover:text-accent"
+        >
+          + Create new project
+        </button>
+      </div>
+
+      <CreateProjectModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    </div>
+  );
+}
 
 type ChatMsg = { id: number; role: string; content: string; reference_urls?: string[] };
 
@@ -53,6 +138,11 @@ const SAMPLE_BASE_IMAGE =
   "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/thtclx/input1.png";
 
 export function WorkspacePage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const projectId = searchParams.get("projectId");
+  const preloadedRef = searchParams.get("ref");
+
+  if (!projectId) return <ProjectPicker />;
   const [baseImageUrl, setBaseImageUrl] = useState(SAMPLE_BASE_IMAGE);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [phase, setPhase] = useState<string>("");
@@ -174,16 +264,34 @@ export function WorkspacePage() {
     setSavedRefUrls([]);
     setSelectedRefUrls([]);
     try {
+      const payload: Record<string, string> = { base_image_url: baseImageUrl.trim() };
+      if (preloadedRef) {
+        let refUrl = preloadedRef;
+        if (!refUrl.startsWith("http") && !refUrl.startsWith("data:image")) {
+          const blob = await fetch(refUrl).then((r) => r.blob());
+          const file = new File([blob], "reference.png", { type: blob.type });
+          refUrl = await uploadImageFile(file);
+        }
+        payload.preloaded_reference_url = refUrl;
+      }
       const res = await fetch(`${API}/workflow/edit-flow/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base_image_url: baseImageUrl.trim() }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(formatUpstreamError(await readError(res)));
       const s = (await res.json()) as SessionPayload;
       setSessionId(s.id);
       setPhase(s.phase);
       setMessages(s.messages);
+      if (s.reference_urls?.length) {
+        setSavedRefUrls(s.reference_urls);
+        setSelectedRefUrls(s.reference_urls);
+        setRefAUrl(s.reference_urls[0]);
+      }
+      if (preloadedRef) {
+        setSearchParams({}, { replace: true });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start session");
     } finally {
@@ -432,6 +540,11 @@ export function WorkspacePage() {
               className="mb-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/30 disabled:bg-zinc-50"
             />
           )}
+          {preloadedRef && !sessionId ? (
+            <p className="mb-2 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2 text-xs text-accent">
+              Style reference will be pre-loaded into the session on start.
+            </p>
+          ) : null}
           <div className="flex gap-2">
             <button
               type="button"
@@ -721,6 +834,59 @@ export function WorkspacePage() {
         <Card className="mb-4 overflow-hidden p-0">
           <img src={previewSrc} alt="Active frame" className="max-h-[340px] w-full object-contain bg-zinc-100" />
         </Card>
+
+        <div className="mb-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">References &amp; assets</p>
+            {sessionId && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => refAFileRef.current?.click()}
+                className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-40"
+              >
+                + Upload reference
+              </button>
+            )}
+          </div>
+          {(() => {
+            const pendingRef = preloadedRef && !sessionId ? [preloadedRef] : [];
+            const visibleRefs = savedRefUrls.length > 0 ? savedRefUrls : pendingRef;
+            const isPending = visibleRefs === pendingRef && pendingRef.length > 0;
+            if (visibleRefs.length > 0) {
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {visibleRefs.map((url, i) => (
+                    <div
+                      key={`ref-thumb-${i}-${url.slice(0, 32)}`}
+                      className={`group relative h-20 w-24 overflow-hidden rounded-xl border bg-white shadow-sm ${
+                        isPending ? "border-accent/40 ring-1 ring-accent/20" : "border-zinc-200"
+                      }`}
+                    >
+                      <img
+                        src={url}
+                        alt={`Reference ${i + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <span className={`absolute bottom-0 left-0 right-0 px-1.5 pb-1 pt-3 text-[10px] font-medium text-white ${
+                        isPending ? "bg-gradient-to-t from-accent/70 to-transparent" : "bg-gradient-to-t from-black/50 to-transparent"
+                      }`}>
+                        {isPending ? "Pending" : `Ref ${i + 1}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <p className="rounded-xl border border-dashed border-zinc-300 bg-white/60 px-4 py-5 text-center text-xs text-zinc-400">
+                {sessionId
+                  ? "No references added yet. Upload or select references from the chat."
+                  : "Start a session to add references."}
+              </p>
+            );
+          })()}
+        </div>
 
         {editUrls.length > 0 ? (
           <div className="mb-4">

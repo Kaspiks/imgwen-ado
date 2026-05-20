@@ -1,6 +1,5 @@
 import {
   Background,
-  Controls,
   type Edge,
   Handle,
   type Node,

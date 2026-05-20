@@ -1,7 +1,10 @@
+import { useSearchParams } from "react-router-dom";
 import { EvolutionTimeline } from "../components/EvolutionTimeline";
-import { MOCKUPS } from "../mockups";
 
 export function HistoryPage() {
+  const [params] = useSearchParams();
+  const projectId = Number(params.get("projectId")) || 1;
+
   return (
     <div className="mx-auto max-w-[900px] px-4 py-10 sm:px-6">
       <div className="mb-8">
@@ -10,10 +13,7 @@ export function HistoryPage() {
           Vertical timeline of milestones—each card is a decision point you can reference in exports.
         </p>
       </div>
-      <div className="mb-8 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
-        <img src={MOCKUPS.history} alt="Reference layout" className="w-full object-cover opacity-90" />
-      </div>
-      <EvolutionTimeline />
+      <EvolutionTimeline projectId={projectId} />
     </div>
   );
 }

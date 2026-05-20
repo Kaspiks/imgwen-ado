@@ -4,10 +4,10 @@ import { RevisionTimeline } from "../components/RevisionTimeline";
 import { MOCKUPS } from "../mockups";
 
 const projects = [
-  { id: "1", name: "Spring lookbook", status: "In review", thumb: MOCKUPS.projects },
-  { id: "2", name: "E‑commerce hero set", status: "Draft", thumb: MOCKUPS.workspace },
-  { id: "3", name: "Campaign B-roll", status: "Approved", thumb: MOCKUPS.styleExploration },
-  { id: "4", name: "Lookbook v2", status: "Archived", thumb: MOCKUPS.history },
+  { id: 1, name: "Spring lookbook", status: "In review", thumb: MOCKUPS.projects },
+  { id: 2, name: "E‑commerce hero set", status: "Draft", thumb: MOCKUPS.workspace },
+  { id: 3, name: "Campaign B-roll", status: "Approved", thumb: MOCKUPS.styleExploration },
+  { id: 4, name: "Lookbook v2", status: "Archived", thumb: MOCKUPS.history },
 ];
 
 export function ProjectsPage() {
@@ -37,13 +37,13 @@ export function ProjectsPage() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                to="/workspace"
+                to="/workspace/history?projectId=1"
                 className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#4f4ddb]"
               >
                 Open workspace
               </Link>
               <Link
-                to="/workspace/history"
+                to="/workspace/history?projectId=1"
                 className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
               >
                 Project evolution
@@ -68,7 +68,7 @@ export function ProjectsPage() {
                 <p className="font-semibold text-zinc-900">{p.name}</p>
                 <p className="text-xs text-zinc-500">{p.status}</p>
               </div>
-              <Link to="/workspace" className="text-xs font-semibold text-accent hover:underline">
+              <Link to={`/workspace/history?projectId=${p.id}`} className="text-xs font-semibold text-accent hover:underline">
                 Open
               </Link>
             </div>

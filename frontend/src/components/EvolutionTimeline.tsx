@@ -1,110 +1,157 @@
-import {
-  Background,
-  type Edge,
-  Handle,
-  type Node,
-  type NodeProps,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
+import { API_BASE } from "../lib/api";
 
-type MilestoneData = { title: string; date: string; detail: string };
-type MilestoneRfNode = Node<MilestoneData, "milestone">;
+type ChatSessionItem = {
+  id: number;
+  title: string | null;
+  description: string | null;
+  status: string;
+  edit_sequence_number: number;
+  created_at: string;
+};
 
-function MilestoneNode({ data }: NodeProps<MilestoneRfNode>) {
-  return (
-    <>
-      <Handle type="target" position={Position.Top} className="!bg-transparent !border-0" />
-      <div className="w-[260px] rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <p className="text-xs font-semibold text-accent">{data.date}</p>
-        <p className="mt-1 text-sm font-bold text-zinc-900">{data.title}</p>
-        <p className="mt-2 text-xs leading-relaxed text-zinc-600">{data.detail}</p>
+type ProjectSessionsPayload = {
+  project_id: number;
+  project_name: string;
+  sessions: ChatSessionItem[];
+};
+
+const MOCK_SESSIONS: Record<number, ChatSessionItem[]> = {
+  1: [
+    {
+      id: 5,
+      title: "Final colour grading",
+      description: "Warmed highlights +10%, desaturated greens to match brand palette.",
+      status: "active",
+      edit_sequence_number: 4,
+      created_at: "2026-05-18T14:30:00Z",
+    },
+    {
+      id: 4,
+      title: "Background swap — studio white",
+      description: "Replaced outdoor backdrop with clean studio white for hero banner.",
+      status: "closed",
+      edit_sequence_number: 3,
+      created_at: "2026-05-15T11:00:00Z",
+    },
+    {
+      id: 3,
+      title: "Texture and lighting refinement",
+      description: "Adjusted fabric texture sharpness and softened key light falloff.",
+      status: "closed",
+      edit_sequence_number: 2,
+      created_at: "2026-05-10T09:15:00Z",
+    },
+    {
+      id: 2,
+      title: "Silhouette cleanup",
+      description: "Removed stray flyaway hairs and refined garment outline.",
+      status: "closed",
+      edit_sequence_number: 1,
+      created_at: "2026-05-06T16:45:00Z",
+    },
+    {
+      id: 1,
+      title: "Initial concept upload",
+      description: "Uploaded raw photo set and locked palette direction with client.",
+      status: "closed",
+      edit_sequence_number: 0,
+      created_at: "2026-05-01T10:00:00Z",
+    },
+  ],
+};
+
+export function EvolutionTimeline({
+  projectId,
+  className = "",
+}: {
+  projectId: number;
+  className?: string;
+}) {
+  const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API_BASE}/projects/${projectId}/sessions`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`Failed to load sessions (${r.status})`);
+        return r.json() as Promise<ProjectSessionsPayload>;
+      })
+      .then((data) => setSessions(data.sessions))
+      .catch(() => setSessions(MOCK_SESSIONS[projectId] ?? []))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <div className={`flex min-h-[200px] items-center justify-center rounded-2xl border border-zinc-200/80 bg-white ${className}`}>
+        <p className="text-sm text-zinc-400">Loading timeline…</p>
       </div>
-      <Handle type="source" position={Position.Bottom} className="!bg-transparent !border-0" />
-    </>
-  );
-}
+    );
+  }
 
-const nodeTypes = { milestone: MilestoneNode };
-
-export function EvolutionTimeline({ className = "" }: { className?: string }) {
-  const nodes: MilestoneRfNode[] = useMemo(
-    () => [
-      {
-        id: "m1",
-        type: "milestone",
-        position: { x: 40, y: 0 },
-        data: {
-          title: "Concept lock",
-          date: "Week 1",
-          detail: "Palette and silhouette agreed with the client.",
-        },
-      },
-      {
-        id: "m2",
-        type: "milestone",
-        position: { x: 40, y: 200 },
-        data: {
-          title: "First refinement pass",
-          date: "Week 3",
-          detail: "Texture and lighting tuned; two alternates proposed.",
-        },
-      },
-      {
-        id: "m3",
-        type: "milestone",
-        position: { x: 40, y: 400 },
-        data: {
-          title: "Sign-off",
-          date: "Week 5",
-          detail: "Hero assets exported for campaign drop.",
-        },
-      },
-    ],
-    [],
-  );
-
-  const edges: Edge[] = useMemo(
-    () => [
-      {
-        id: "me1",
-        source: "m1",
-        target: "m2",
-        style: { stroke: "#5e5ce6", strokeWidth: 3 },
-        type: "smoothstep",
-      },
-      {
-        id: "me2",
-        source: "m2",
-        target: "m3",
-        style: { stroke: "#5e5ce6", strokeWidth: 3 },
-        type: "smoothstep",
-      },
-    ],
-    [],
-  );
+  if (sessions.length === 0 && !loading) {
+    return (
+      <div className={`flex min-h-[200px] items-center justify-center rounded-2xl border border-zinc-200/80 bg-white ${className}`}>
+        <p className="text-sm text-zinc-400">No sessions yet</p>
+      </div>
+    );
+  }
 
   return (
-    <div className={`min-h-[640px] w-full rounded-2xl border border-zinc-200/80 bg-white ${className}`}>
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          minZoom={0.5}
-          maxZoom={1.25}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background gap={16} color="#f4f4f5" />
-        </ReactFlow>
-      </ReactFlowProvider>
+    <div className={`rounded-2xl border border-zinc-200/80 bg-white px-8 py-10 ${className}`}>
+      <ol className="relative ml-4">
+        {/* vertical line */}
+        <div className="absolute left-[7px] top-0 h-full w-0.5 bg-zinc-200" />
+
+        {sessions.map((session, idx) => {
+          const isLatest = idx === 0;
+          const date = new Date(session.created_at);
+          const dateStr = date.toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+
+          return (
+            <li key={session.id} className="relative pb-10 pl-8 last:pb-0">
+              {/* milestone circle */}
+              <span
+                className={`absolute left-0 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                  isLatest
+                    ? "border-accent bg-accent shadow-[0_0_0_3px_rgba(94,92,230,0.18)]"
+                    : "border-zinc-300 bg-white"
+                }`}
+              >
+                {isLatest && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                )}
+              </span>
+
+              {/* content */}
+              <p className="text-xs font-medium text-zinc-400">{dateStr}</p>
+              <p className={`mt-0.5 text-sm font-semibold ${isLatest ? "text-accent" : "text-zinc-900"}`}>
+                {session.title ?? `Session #${session.id}`}
+              </p>
+              {session.description && (
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                  {session.description}
+                </p>
+              )}
+              <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                session.status === "active"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : session.status === "closed"
+                    ? "bg-zinc-100 text-zinc-500"
+                    : "bg-amber-50 text-amber-600"
+              }`}>
+                {session.status}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

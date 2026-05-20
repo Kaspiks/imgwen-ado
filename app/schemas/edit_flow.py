@@ -11,6 +11,10 @@ class EditFlowSessionCreate(BaseModel):
         min_length=12,
         description="HTTPS URL fetchable by the model, or a data:image/...;base64,... inline image",
     )
+    preloaded_reference_url: Optional[str] = Field(
+        None,
+        description="Optional reference image URL to pre-load into the session (e.g. from Style Exploration).",
+    )
 
 
 class EditFlowMessageOut(BaseModel):

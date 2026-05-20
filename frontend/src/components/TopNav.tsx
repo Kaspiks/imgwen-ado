@@ -1,4 +1,6 @@
-import { Link, NavLink } from "react-router-dom";
+import { useState } from "react";
+import { NavLink } from "react-router-dom";
+import { CreateProjectModal } from "./CreateProjectModal";
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -49,51 +51,57 @@ function IconPlus() {
 }
 
 export function TopNav() {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-200/80 bg-white/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex items-center gap-8">
-          <NavLink to="/" className="flex items-center gap-2 font-semibold text-zinc-900">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-sm font-bold text-white">
-              S
-            </span>
-            <span>Stylist AI</span>
-          </NavLink>
-          <nav className="hidden items-center gap-1 md:flex">
-            <NavLink to="/projects" className={navLinkClass}>
-              <IconGrid />
-              Projects
+    <>
+      <header className="sticky top-0 z-40 border-b border-zinc-200/80 bg-white/90 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6">
+          <div className="flex items-center gap-8">
+            <NavLink to="/" className="flex items-center gap-2 font-semibold text-zinc-900">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-sm font-bold text-white">
+                S
+              </span>
+              <span>Stylist AI</span>
             </NavLink>
-            <NavLink to="/workspace" className={navLinkClass}>
-              <IconWorkspace />
-              Workspace
-            </NavLink>
-            <NavLink to="/style-exploration" className={navLinkClass}>
-              <IconSpark />
-              Style exploration
-            </NavLink>
-            <NavLink to="/settings" className={navLinkClass}>
-              <IconCog />
-              Settings
-            </NavLink>
-          </nav>
+            <nav className="hidden items-center gap-1 md:flex">
+              <NavLink to="/projects" className={navLinkClass}>
+                <IconGrid />
+                Projects
+              </NavLink>
+              <NavLink to="/workspace" className={navLinkClass}>
+                <IconWorkspace />
+                Workspace
+              </NavLink>
+              <NavLink to="/style-exploration" className={navLinkClass}>
+                <IconSpark />
+                Style exploration
+              </NavLink>
+              <NavLink to="/settings" className={navLinkClass}>
+                <IconCog />
+                Settings
+              </NavLink>
+            </nav>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="hidden items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#4f4ddb] sm:flex"
+            >
+              <IconPlus />
+              Create New
+            </button>
+            <div
+              className="h-9 w-9 rounded-full border-2 border-white bg-gradient-to-br from-accent to-violet-400 shadow-md ring-2 ring-zinc-100"
+              title="Account"
+              role="img"
+              aria-label="User avatar"
+            />
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            to="/workspace"
-            className="hidden items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#4f4ddb] sm:flex"
-          >
-            <IconPlus />
-            Create New
-          </Link>
-          <div
-            className="h-9 w-9 rounded-full border-2 border-white bg-gradient-to-br from-accent to-violet-400 shadow-md ring-2 ring-zinc-100"
-            title="Account"
-            role="img"
-            aria-label="User avatar"
-          />
-        </div>
-      </div>
-    </header>
+      </header>
+      <CreateProjectModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    </>
   );
 }
