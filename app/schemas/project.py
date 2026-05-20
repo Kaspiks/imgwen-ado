@@ -13,6 +13,8 @@ class ChatSessionOut(BaseModel):
     status: str
     edit_sequence_number: int
     created_at: datetime
+    original_image_url: Optional[str] = None
+    edited_image_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

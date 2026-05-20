@@ -5,6 +5,11 @@ import { ChatReferencePicker } from "../components/ChatReferencePicker";
 import { CreateProjectModal } from "../components/CreateProjectModal";
 import { MOCKUPS } from "../mockups";
 import { API_BASE } from "../lib/api";
+import {
+  ingestReferenceToLibrary,
+  ingestReferenceToLibraryQuietly,
+  ingestReferenceUrlsQuietly,
+} from "../lib/references";
 
 const API = API_BASE;
 
@@ -171,6 +176,7 @@ function WorkspaceEditor({
   const [selectedRefUrls, setSelectedRefUrls] = useState<string[]>([]);
   const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "error">("checking");
   const [libraryMsg, setLibraryMsg] = useState<{ slot: "a" | "b"; text: string } | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
 
   const baseFileRef = useRef<HTMLInputElement>(null);
   const refAFileRef = useRef<HTMLInputElement>(null);
@@ -190,6 +196,60 @@ function WorkspaceEditor({
       cancelled = true;
     };
   }, []);
+
+  // Fetch the project name so the header shows which project is open.
+  useEffect(() => {
+    let cancelled = false;
+    setProjectName(null);
+    fetch(`${API}/projects/${projectId}`)
+      .then((r) => (r.ok ? (r.json() as Promise<ProjectItem>) : null))
+      .then((p) => {
+        if (!cancelled && p) setProjectName(p.project_name);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // Restore the most recent session for this project on mount.
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/workflow/edit-flow/sessions?project_id=${projectId}`)
+      .then((r) => (r.ok ? (r.json() as Promise<SessionPayload>) : null))
+      .then((s) => {
+        if (!cancelled && s) {
+          setSessionId(s.id);
+          setPhase(s.phase);
+          setMessages(s.messages);
+          setBaseImageUrl(s.base_image_url);
+          const r = s.reference_urls || [];
+          setSavedRefUrls(r);
+          setSelectedRefUrls(r);
+          if (r[0]?.startsWith("data:image")) {
+            setRefAEmbedded(r[0]);
+            setRefAUrl("");
+          } else {
+            setRefAEmbedded(null);
+            setRefAUrl(r[0] ?? "");
+          }
+          if (r[1]?.startsWith("data:image")) {
+            setRefBEmbedded(r[1]);
+            setRefBUrl("");
+          } else {
+            setRefBEmbedded(null);
+            setRefBUrl(r[1] ?? "");
+          }
+          if (s.last_edit_result?.edited_image_urls?.length) {
+            setEditUrls(s.last_edit_result.edited_image_urls);
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const uploadImageFile = async (file: File) => {
     const fd = new FormData();
@@ -260,6 +320,7 @@ function WorkspaceEditor({
         setRefBEmbedded(url);
         setRefBUrl("");
       }
+      ingestReferenceToLibraryQuietly(url, ["Uploaded"]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -275,7 +336,10 @@ function WorkspaceEditor({
     setSavedRefUrls([]);
     setSelectedRefUrls([]);
     try {
-      const payload: Record<string, string> = { base_image_url: baseImageUrl.trim() };
+      const payload: Record<string, string | number> = {
+        base_image_url: baseImageUrl.trim(),
+        project_id: Number(projectId),
+      };
       if (preloadedRef) {
         let refUrl = preloadedRef;
         if (!refUrl.startsWith("http") && !refUrl.startsWith("data:image")) {
@@ -395,6 +459,7 @@ function WorkspaceEditor({
       });
       if (!res.ok) throw new Error(await readError(res));
       await syncSession(sessionId);
+      ingestReferenceUrlsQuietly(normalized, ["Session"]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save references");
     } finally {
@@ -421,14 +486,8 @@ function WorkspaceEditor({
     setLibraryMsg(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/workflow/edit-flow/references/ingest`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: url, description: "", tags: [] }),
-      });
-      if (!res.ok) throw new Error(await readError(res));
-      const body = (await res.json()) as { description: string };
-      setLibraryMsg({ slot, text: `Saved to library: "${body.description.slice(0, 80)}"` });
+      const item = await ingestReferenceToLibrary(url, ["Saved"]);
+      setLibraryMsg({ slot, text: `Saved to library: "${item.description.slice(0, 80)}"` });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save to library");
     } finally {
@@ -839,7 +898,7 @@ function WorkspaceEditor({
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-bold text-zinc-900">Image workspace</h2>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-            Project #{projectId} · {sessionId ? `Session #${sessionId}` : "No session"}
+            {projectName ?? `Project #${projectId}`} · {sessionId ? `Session #${sessionId}` : "No session"}
           </span>
         </div>
         <Card className="mb-4 overflow-hidden p-0">

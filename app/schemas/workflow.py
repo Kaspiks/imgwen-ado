@@ -18,7 +18,7 @@ class ImageEditWorkflowRequest(BaseModel):
     edit_size: str = Field("1024*1024", description="e.g. 1024*1024, 1024*1536")
     skip_critic: bool = False
     edit_watermark: bool = Field(True, description="Official qwen-image-edit-max examples often use true")
-    edit_negative_prompt: str = Field("", description="Passed to MultiModalConversation (empty string is valid)")
+    edit_negative_prompt: str = Field("", description="Negative prompt for the edit model. Leave empty to auto-select based on edit type.")
 
 
 class ImageEditWorkflowResponse(BaseModel):

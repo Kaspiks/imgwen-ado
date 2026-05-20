@@ -29,6 +29,21 @@ def _migrate() -> None:
             )
         )
 
+        conn.execute(
+            text(
+                "ALTER TABLE edit_flow_sessions "
+                "ADD COLUMN IF NOT EXISTS project_id INTEGER "
+                "REFERENCES projects(id) ON DELETE SET NULL"
+            )
+        )
+
+        conn.execute(
+            text(
+                "ALTER TABLE images "
+                "ADD COLUMN IF NOT EXISTS source_url TEXT"
+            )
+        )
+
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)

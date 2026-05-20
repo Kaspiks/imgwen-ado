@@ -14,6 +14,6 @@ RUN chmod +x /entrypoint.sh
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     && pip install --no-cache-dir -e .
 
-EXPOSE 8000
+EXPOSE 8000 5678
 
 ENTRYPOINT ["/entrypoint.sh"]

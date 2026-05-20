@@ -5,7 +5,7 @@ import json
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.workflow import ImageEditWorkflowRequest, ImageEditWorkflowResponse
-from app.workflows.image_edit_workflow import run_image_edit_workflow
+from app.workflows.image_edit_workflow import ImageEditWorkflow
 
 router = APIRouter(prefix="/workflow", tags=["workflow"])
 
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 @router.post("/image-edit", response_model=ImageEditWorkflowResponse)
 def post_image_edit_workflow(body: ImageEditWorkflowRequest) -> ImageEditWorkflowResponse:
     try:
-        result = run_image_edit_workflow(
+        result = ImageEditWorkflow().run(
             user_prompt=body.user_prompt,
             base_image_url=body.base_image_url,
             top_k_refs=body.top_k_refs,

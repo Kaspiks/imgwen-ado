@@ -21,6 +21,12 @@ class EditFlowSession(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
 
+    project_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     base_image_url: Mapped[str] = mapped_column(Text, nullable=False)
     phase: Mapped[EditFlowPhase] = mapped_column(
         SQLEnum(EditFlowPhase, native_enum=False),

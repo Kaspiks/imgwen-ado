@@ -18,7 +18,11 @@ services:
     container_name: app-api
     ports:
       - "8000:8000"
+      - "5678:5678"
     environment:
+      DEBUGPY_ENABLE: ${DEBUGPY_ENABLE:-0}
+      DEBUGPY_WAIT: ${DEBUGPY_WAIT:-0}
+      DEBUGPY_PORT: ${DEBUGPY_PORT:-5678}
       DATABASE_URL: postgresql+psycopg://app:app@postgres:5432/app_db
       QDRANT_URL: http://qdrant:6333
       # Alibaba MaaS / Model Studio — set in .env (see .env.example). Optional split: reasoning vs editing gateway.
@@ -37,7 +41,7 @@ services:
       QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen-vl-max}
       QWEN_TEXT_MODEL: ${QWEN_TEXT_MODEL:-qwen-plus-latest}
       QWEN_IMAGE_EDIT_MODEL: ${QWEN_IMAGE_EDIT_MODEL:-qwen-image-edit-max}
-      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-wan2.6-t2i}
+      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-qwen-image-2.0-pro}
       QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v4}
     depends_on:
       postgres:

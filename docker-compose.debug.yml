@@ -1,0 +1,7 @@
+# Enable debugpy on the API container (port 5678).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.debug.yml up --build api
+services:
+  api:
+    environment:
+      DEBUGPY_ENABLE: "1"
+      DEBUGPY_WAIT: "1"

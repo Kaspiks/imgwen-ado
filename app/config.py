@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     qwen_vision_model: str = "qwen-vl-max"
     qwen_text_model: str = "qwen3.6-max-preview"
     qwen_image_edit_model: str = "qwen-image-edit-max"
-    qwen_image_generation_model: str = "wan2.6-t2i"
+    qwen_image_generation_model: str = "qwen-image-2.0-pro"
 
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_collection: str = "style_refs"
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     _DASHSCOPE_INTL_BASE = "https://dashscope-intl.aliyuncs.com/api/v1"
 
     def dashscope_generation_base(self) -> str:
-        """Public endpoint for text-to-image models (wan2.6-t2i / wanx).
+        """Public endpoint for text-to-image models (qwen-image-2.0-pro / wanx).
 
         Wan image generation is on the intl pay-as-you-go gateway, not workspace MaaS hosts.
         When DASHSCOPE_GENERATION_BASE_HTTP_API_URL is unset and the main base is a MaaS URL,

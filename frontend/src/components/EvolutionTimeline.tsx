@@ -1,64 +1,21 @@
 import { useEffect, useState } from "react";
 import { API_BASE } from "../lib/api";
 
-type ChatSessionItem = {
+type ChatSessionSummary = {
   id: number;
   title: string | null;
   description: string | null;
   status: string;
   edit_sequence_number: number;
   created_at: string;
+  original_image_url: string | null;
+  edited_image_url: string | null;
 };
 
 type ProjectSessionsPayload = {
   project_id: number;
   project_name: string;
-  sessions: ChatSessionItem[];
-};
-
-const MOCK_SESSIONS: Record<number, ChatSessionItem[]> = {
-  1: [
-    {
-      id: 5,
-      title: "Final colour grading",
-      description: "Warmed highlights +10%, desaturated greens to match brand palette.",
-      status: "active",
-      edit_sequence_number: 4,
-      created_at: "2026-05-18T14:30:00Z",
-    },
-    {
-      id: 4,
-      title: "Background swap — studio white",
-      description: "Replaced outdoor backdrop with clean studio white for hero banner.",
-      status: "closed",
-      edit_sequence_number: 3,
-      created_at: "2026-05-15T11:00:00Z",
-    },
-    {
-      id: 3,
-      title: "Texture and lighting refinement",
-      description: "Adjusted fabric texture sharpness and softened key light falloff.",
-      status: "closed",
-      edit_sequence_number: 2,
-      created_at: "2026-05-10T09:15:00Z",
-    },
-    {
-      id: 2,
-      title: "Silhouette cleanup",
-      description: "Removed stray flyaway hairs and refined garment outline.",
-      status: "closed",
-      edit_sequence_number: 1,
-      created_at: "2026-05-06T16:45:00Z",
-    },
-    {
-      id: 1,
-      title: "Initial concept upload",
-      description: "Uploaded raw photo set and locked palette direction with client.",
-      status: "closed",
-      edit_sequence_number: 0,
-      created_at: "2026-05-01T10:00:00Z",
-    },
-  ],
+  sessions: ChatSessionSummary[];
 };
 
 export function EvolutionTimeline({
@@ -68,18 +25,23 @@ export function EvolutionTimeline({
   projectId: number;
   className?: string;
 }) {
-  const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     fetch(`${API_BASE}/projects/${projectId}/sessions`)
       .then((r) => {
-        if (!r.ok) throw new Error(`Failed to load sessions (${r.status})`);
+        if (!r.ok) throw new Error(`Failed to load history (${r.status})`);
         return r.json() as Promise<ProjectSessionsPayload>;
       })
       .then((data) => setSessions(data.sessions))
-      .catch(() => setSessions(MOCK_SESSIONS[projectId] ?? []))
+      .catch((e) => {
+        setSessions([]);
+        setError(e instanceof Error ? e.message : "Failed to load history");
+      })
       .finally(() => setLoading(false));
   }, [projectId]);
 
@@ -91,10 +53,11 @@ export function EvolutionTimeline({
     );
   }
 
-  if (sessions.length === 0 && !loading) {
+  if (sessions.length === 0) {
     return (
-      <div className={`flex min-h-[200px] items-center justify-center rounded-2xl border border-zinc-200/80 bg-white ${className}`}>
-        <p className="text-sm text-zinc-400">No sessions yet</p>
+      <div className={`flex min-h-[200px] flex-col items-center justify-center gap-1 rounded-2xl border border-zinc-200/80 bg-white ${className}`}>
+        <p className="text-sm text-zinc-400">No edit sessions for this project yet.</p>
+        {error ? <p className="text-xs text-zinc-300">{error}</p> : null}
       </div>
     );
   }
@@ -113,41 +76,81 @@ export function EvolutionTimeline({
             day: "numeric",
             year: "numeric",
           });
+          const timeStr = date.toLocaleTimeString(undefined, {
+            hour: "numeric",
+            minute: "2-digit",
+          });
 
           return (
             <li key={session.id} className="relative pb-10 pl-8 last:pb-0">
               {/* milestone circle */}
               <span
-                className={`absolute left-0 top-0.5 flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                className={`absolute left-0 top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 ${
                   isLatest
                     ? "border-accent bg-accent shadow-[0_0_0_3px_rgba(94,92,230,0.18)]"
                     : "border-zinc-300 bg-white"
                 }`}
               >
-                {isLatest && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-white" />
-                )}
+                {isLatest && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
               </span>
 
-              {/* content */}
-              <p className="text-xs font-medium text-zinc-400">{dateStr}</p>
+              {/* header row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-medium text-zinc-400">
+                  {dateStr} · {timeStr}
+                </p>
+                <span className="inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
+                  Edit #{session.edit_sequence_number}
+                </span>
+                <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600">
+                  Edit completed
+                </span>
+              </div>
+
               <p className={`mt-0.5 text-sm font-semibold ${isLatest ? "text-accent" : "text-zinc-900"}`}>
-                {session.title ?? `Session #${session.id}`}
+                {session.title ?? `Edit #${session.edit_sequence_number}`}
               </p>
-              {session.description && (
-                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+
+              {session.description ? (
+                <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-zinc-500">
                   {session.description}
                 </p>
-              )}
-              <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
-                session.status === "active"
-                  ? "bg-emerald-50 text-emerald-600"
-                  : session.status === "closed"
-                    ? "bg-zinc-100 text-zinc-500"
-                    : "bg-amber-50 text-amber-600"
-              }`}>
-                {session.status}
-              </span>
+              ) : null}
+
+              {/* before / after thumbnails */}
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                {session.original_image_url && (
+                  <figure className="flex flex-col gap-1">
+                    <img
+                      src={session.original_image_url}
+                      alt="Base"
+                      className="h-24 w-24 rounded-lg border border-zinc-200 object-cover"
+                    />
+                    <figcaption className="text-center text-[10px] uppercase tracking-wide text-zinc-400">
+                      Base
+                    </figcaption>
+                  </figure>
+                )}
+
+                {session.original_image_url && session.edited_image_url && (
+                  <span className="mb-8 text-zinc-300">→</span>
+                )}
+
+                {session.edited_image_url && (
+                  <figure className="flex flex-col gap-1">
+                    <a href={session.edited_image_url} target="_blank" rel="noreferrer">
+                      <img
+                        src={session.edited_image_url}
+                        alt="Edit"
+                        className="h-24 w-24 rounded-lg border border-accent/30 object-cover transition hover:ring-2 hover:ring-accent/40"
+                      />
+                    </a>
+                    <figcaption className="text-center text-[10px] uppercase tracking-wide text-zinc-400">
+                      Edit
+                    </figcaption>
+                  </figure>
+                )}
+              </div>
             </li>
           );
         })}

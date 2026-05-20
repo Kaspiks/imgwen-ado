@@ -5,7 +5,7 @@ import enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Enum as SQLEnum, Integer, String, func
+from sqlalchemy import DateTime, Enum as SQLEnum, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -37,6 +37,10 @@ class Image(Base):
 
   minio_bucket: Mapped[str] = mapped_column(String(100), nullable=False)
   minio_object_key: Mapped[str] = mapped_column(String(500), nullable=False)
+
+  # Direct URL (HTTPS or data: URL) for images that live outside MinIO — e.g. the
+  # edit-flow pipeline, which works with URLs rather than object storage.
+  source_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
   content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
   qdrant_collection: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

@@ -16,8 +16,8 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
-from app.services import dashscope_qwen as dq
-from app.services.qdrant_reference_search import ingest_reference, qdrant_client
+from app.services.dashscope_qwen import DashScopeClient
+from app.services.qdrant_reference_search import QdrantReferenceSearch
 
 FRONTEND_PUBLIC = Path(__file__).resolve().parent.parent / "frontend" / "public"
 SEED_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -59,8 +59,17 @@ def main() -> None:
         print("[seed_references] No DASHSCOPE_API_KEY set — skipping Qdrant seed.")
         return
 
-    qclient = qdrant_client(settings.qdrant_url)
-    base_url = settings.dashscope_reasoning_base()
+    search = QdrantReferenceSearch(
+        url=settings.qdrant_url,
+        collection=settings.qdrant_collection,
+        vector_size=settings.qwen_embedding_vector_size,
+    )
+
+    client = DashScopeClient(
+        api_key=api_key,
+        base_http_api_url=settings.dashscope_reasoning_base(),
+    )
+
     model = settings.qwen_embedding_model
 
     seeded = 0
@@ -78,28 +87,25 @@ def main() -> None:
         data_uri = _file_to_data_uri(file_path)
 
         try:
-            vector = dq.embed_text(
-                api_key=api_key,
-                base_http_api_url=base_url,
+            vector = client.embed_text(
                 model=model,
                 text=description,
                 text_type="document",
             )
+
         except Exception as exc:
             print(f"[seed_references] Embedding failed for {ref['file']}: {exc}")
             continue
 
         try:
-            ingest_reference(
-                qclient,
-                collection=settings.qdrant_collection,
-                vector_size=settings.qwen_embedding_vector_size,
+            search.ingest_reference(
                 image_url=data_uri,
                 description=description,
                 vector=vector,
                 tags=tags,
                 point_id=point_id,
             )
+
             seeded += 1
             print(f"[seed_references] Ingested {ref['file']} as {point_id}")
         except Exception as exc:

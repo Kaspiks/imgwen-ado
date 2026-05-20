@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,7 @@ class EditFlowSessionCreate(BaseModel):
         None,
         description="Optional reference image URL to pre-load into the session (e.g. from Style Exploration).",
     )
+    project_id: Optional[int] = Field(None, description="Project this session belongs to.")
 
 
 class EditFlowMessageOut(BaseModel):
@@ -34,6 +36,23 @@ class EditFlowSessionOut(BaseModel):
     reference_urls: list[str]
     messages: list[EditFlowMessageOut]
     last_edit_result: Optional[dict[str, Any]] = None
+
+
+class EditFlowSessionSummary(BaseModel):
+    id: int
+    phase: str
+    base_image_url: str
+    reference_urls: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+    edited_image_urls: list[str] = Field(default_factory=list)
+    final_prompt: Optional[str] = None
+    user_goal: Optional[str] = None
+
+
+class EditFlowProjectHistoryOut(BaseModel):
+    project_id: int
+    sessions: list[EditFlowSessionSummary] = Field(default_factory=list)
 
 
 class EditFlowChatRequest(BaseModel):
@@ -101,3 +120,14 @@ class ReferenceIngestResponse(BaseModel):
     point_id: str
     description: str = Field(..., description="Description that was embedded (auto-generated or provided)")
     message: str
+
+
+class ReferenceLibraryItemOut(BaseModel):
+    point_id: str
+    image_url: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class ReferenceLibraryListOut(BaseModel):
+    references: list[ReferenceLibraryItemOut] = Field(default_factory=list)
