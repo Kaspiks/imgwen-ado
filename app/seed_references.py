@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import sys
+import uuid
 from pathlib import Path
 
 from app.config import settings
@@ -19,11 +20,12 @@ from app.services import dashscope_qwen as dq
 from app.services.qdrant_reference_search import ingest_reference, qdrant_client
 
 FRONTEND_PUBLIC = Path(__file__).resolve().parent.parent / "frontend" / "public"
+SEED_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
 
 REFERENCES: list[dict[str, object]] = [
     {
         "file": "1294.png",
-        "point_id": "ref-seed-blue-tones-palette",
+        "seed_key": "ref-seed-blue-tones-palette",
         "description": (
             "A monochromatic color palette spanning from deep navy to light sky blue. "
             "Five vertical swatches: navy, teal, steel blue, sky blue, and ice. "
@@ -33,7 +35,7 @@ REFERENCES: list[dict[str, object]] = [
     },
     {
         "file": "photo_2026-05-18_09-36-43.jpg",
-        "point_id": "ref-seed-minimalism-interior",
+        "seed_key": "ref-seed-minimalism-interior",
         "description": (
             "Satin ribbon roses in blush pink and sky blue wrapped in white paper, "
             "alongside a black candle gift box with pebbles. Minimalist interior styling "
@@ -70,7 +72,8 @@ def main() -> None:
 
         description = str(ref["description"])
         tags = list(ref.get("tags") or [])
-        point_id = str(ref["point_id"])
+        seed_key = str(ref["seed_key"])
+        point_id = str(uuid.uuid5(SEED_NAMESPACE, seed_key))
 
         data_uri = _file_to_data_uri(file_path)
 

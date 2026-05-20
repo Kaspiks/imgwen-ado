@@ -233,11 +233,10 @@ def run_image_edit_workflow(
                 return None
             raise RuntimeError(f"{exc}\n\nEdit prompt that was sent:\n{prompt}") from exc
 
-    edited_urls = _try_edit(final_prompt, merged)
-
-    if edited_urls is None:
-        warnings.append(f"Content filter rejected with refs; retrying without references. Prompt: {final_prompt!r}")
-        edited_urls = _try_edit(final_prompt, [])
+    # Portrait references cause identity drift — the model blends facial features from all input images
+    # regardless of prompt instructions. Color info flows through the vision-extracted text descriptions
+    # above. The edit model only receives the base image to guarantee identity is preserved.
+    edited_urls = _try_edit(final_prompt, [])
 
     if edited_urls is None:
         warnings.append("Content filter still rejected; retrying with raw user prompt.")

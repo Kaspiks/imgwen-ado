@@ -138,11 +138,22 @@ const SAMPLE_BASE_IMAGE =
   "https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20250925/thtclx/input1.png";
 
 export function WorkspacePage() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const projectId = searchParams.get("projectId");
   const preloadedRef = searchParams.get("ref");
 
   if (!projectId) return <ProjectPicker />;
+  return <WorkspaceEditor projectId={projectId} preloadedRef={preloadedRef} />;
+}
+
+function WorkspaceEditor({
+  projectId,
+  preloadedRef,
+}: {
+  projectId: string;
+  preloadedRef: string | null;
+}) {
+  const [, setSearchParams] = useSearchParams();
   const [baseImageUrl, setBaseImageUrl] = useState(SAMPLE_BASE_IMAGE);
   const [sessionId, setSessionId] = useState<number | null>(null);
   const [phase, setPhase] = useState<string>("");
@@ -828,7 +839,7 @@ export function WorkspacePage() {
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-sm font-bold text-zinc-900">Image workspace</h2>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-medium text-zinc-600 shadow-sm">
-            {sessionId ? `Session #${sessionId}` : "No session"}
+            Project #{projectId} · {sessionId ? `Session #${sessionId}` : "No session"}
           </span>
         </div>
         <Card className="mb-4 overflow-hidden p-0">

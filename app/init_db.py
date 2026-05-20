@@ -15,6 +15,20 @@ def _migrate() -> None:
             )
         )
 
+        conn.execute(
+            text(
+                "ALTER TABLE chat_sessions "
+                "ADD COLUMN IF NOT EXISTS edit_sequence_number INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        
+        conn.execute(
+            text(
+                "ALTER TABLE chat_sessions "
+                "ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            )
+        )
+
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)
