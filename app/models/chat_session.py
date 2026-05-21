@@ -44,18 +44,3 @@ class ChatSession(Base):
   edited_image_id: Mapped[Optional[int]] = mapped_column(ForeignKey("images.id"), nullable=True)
 
   project: Mapped["Project"] = relationship(back_populates="sessions")
-
-  messages: Mapped[list["Message"]] = relationship(
-    back_populates="session",
-    cascade="all, delete-orphan",
-  )
-
-  reference_styles: Mapped[list["ReferenceStyle"]] = relationship(
-    back_populates="session",
-    cascade="all, delete-orphan",
-  )
-
-  jobs: Mapped[list["EditJob"]] = relationship(
-    back_populates="session",
-    cascade="all, delete-orphan",
-  )

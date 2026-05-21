@@ -5,6 +5,7 @@ from typing import Any
 
 from app.config import settings
 from app.services.dashscope_qwen import DashScopeClient
+from app.services.object_storage import persist as persist_image, resolve_for_model
 from app.services.qdrant_reference_search import QdrantReferenceSearch
 
 
@@ -65,9 +66,14 @@ class ReferenceLibrary:
             base_http_api_url=settings.dashscope_reasoning_base(),
         )
 
+        # Store the reference in object storage so Qdrant holds a short, permanent
+        # URL instead of a multi-MB base64 data URI. DashScope can't read a local
+        # MinIO URL, so resolve it back to bytes for the vision describe call.
+        stored_url = persist_image(image_url)
+
         desc = description.strip()
         if not desc:
-            desc = self._describe_reference_image(client, image_url=image_url)
+            desc = self._describe_reference_image(client, image_url=resolve_for_model(stored_url))
 
         vector = client.embed_text(
             model=settings.qwen_embedding_model,
@@ -76,9 +82,9 @@ class ReferenceLibrary:
         )
 
         tag_list = list(tags or [])
-        point_id = self.stable_point_id(image_url)
+        point_id = self.stable_point_id(stored_url)
         self.search.ingest_reference(
-            image_url=image_url,
+            image_url=stored_url,
             description=desc,
             vector=vector,
             tags=tag_list,
@@ -87,7 +93,7 @@ class ReferenceLibrary:
 
         return {
             "point_id": point_id,
-            "image_url": image_url,
+            "image_url": stored_url,
             "description": desc,
             "tags": tag_list,
         }

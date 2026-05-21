@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.chat_session import ChatSession, ChatSessionStatus
 from app.models.edit_flow import EditFlowMessage, EditFlowPhase, EditFlowSession
-from app.models.edit_job import EditJob, EditJobStatus
 from app.models.image import Image
 from app.models.project import Project
 from app.services.dashscope_qwen import DashScopeClient
+from app.services.object_storage import persist as _persist_image_url, resolve_for_model
 from app.workflows.image_edit_workflow import ImageEditWorkflow
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,9 @@ class EditFlowService:
         new_user_text: str,
         reference_urls: list[str] | None = None,
     ) -> list[dict]:
+        # Resolve persisted MinIO URLs to inline data: URIs so DashScope can read them.
+        base_image_url = resolve_for_model(base_image_url)
+
         messages: list[dict] = [
             {"role": "system", "content": [{"text": cls.REASONING_CHAT_SYSTEM}]},
         ]
@@ -108,7 +111,11 @@ class EditFlowService:
                     }
                 )
 
-        refs = [u for u in (reference_urls or []) if isinstance(u, str) and u.strip()][:3]
+        refs = [
+            resolve_for_model(u)
+            for u in (reference_urls or [])
+            if isinstance(u, str) and u.strip()
+        ][:3]
         content: list[dict] = [{"image": base_image_url}, *({"image": u} for u in refs)]
 
         if len(refs) == 1:
@@ -277,6 +284,10 @@ class EditFlowService:
                     msg = str(exc).strip() or "image generation failed"
                     assistant_clean += f"\n\n[Could not generate reference for '{p[:60]}...': {msg}]"
 
+            # Inline before persisting: the user picks these as references later,
+            # by which time the signed OSS URLs would have expired.
+            generated_urls = [_persist_image_url(u) for u in generated_urls]
+
         self.append_message(
             session_id=session_id,
             role="assistant",
@@ -359,7 +370,7 @@ class EditFlowService:
         )
         reasoning = reasoning_client.vision_reasoning_json(
             model=settings.qwen_vision_model,
-            base_image_url=session.base_image_url,
+            base_image_url=resolve_for_model(session.base_image_url),
             user_prompt=consolidate_prompt,
         )
 
@@ -404,11 +415,16 @@ class EditFlowService:
 
         self.append_message(session_id=session_id, role="assistant", content=wrap)
 
+        # The edit model returns short-lived signed OSS URLs. Persist them to object
+        # storage once so every consumer (response payload, project history, thumbnails,
+        # and the next chained edit) holds a permanent URL instead of an expiring one.
+        edited_image_urls = [_persist_image_url(u) for u in result.edited_image_urls]
+
         payload = {
             "reasoning": result.reasoning,
             "retrieved_references": result.retrieved_references,
             "plan": result.plan,
-            "edited_image_urls": result.edited_image_urls,
+            "edited_image_urls": edited_image_urls,
             "critique": result.critique,
             "warnings": result.warnings,
             "planner_reasoning_text": result.planner_reasoning_text,
@@ -424,7 +440,7 @@ class EditFlowService:
         try:
             self._record_relational_edit(
                 edit_flow_session=session,
-                edited_urls=result.edited_image_urls,
+                edited_urls=edited_image_urls,
                 final_prompt=final_prompt,
                 user_goal=user_goal,
             )
@@ -432,8 +448,9 @@ class EditFlowService:
             logger.exception("Failed to record relational edit for session %s", session_id)
             self.db.rollback()
 
-        if result.edited_image_urls:
-            session.base_image_url = result.edited_image_urls[0]
+        if edited_image_urls:
+            # Chain the (already persisted) result as the next base image.
+            session.base_image_url = edited_image_urls[0]
             self.db.add(session)
             self.db.commit()
 
@@ -509,7 +526,6 @@ class EditFlowService:
 
             self.db.add(project)
 
-        self.db.add(EditJob(status=EditJobStatus.done, session_id=chat.id))
         self.db.commit()
 
         return chat

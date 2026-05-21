@@ -152,7 +152,16 @@ class DashScopeClient:
         lines.append(detail)
         low = detail.lower()
 
-        if "model not exist" in low or (inner_code or "").lower() in ("invalidparameter", "model.notfound"):
+        if "failed to download" in low or ("download" in low and "image" in low):
+            lines.append(
+                "DashScope could not download an input image. This is usually an expired or "
+                "forbidden (403) signed OSS URL from a previous generation/edit, or an "
+                "unreachable/private image URL — not a model-configuration problem. "
+                "Re-fetch or re-upload the base/reference image so it is a fresh public URL or "
+                "an inline data:image/...;base64 URL, then retry."
+            )
+
+        elif "model not exist" in low or (inner_code or "").lower() in ("invalidparameter", "model.notfound"):
             lines.append(cls._model_not_exist_hint(step))
 
         if "url error" in low and step.lower() == "image_generation":

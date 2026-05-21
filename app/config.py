@@ -50,7 +50,20 @@ class Settings(BaseSettings):
     qwen_vision_model: str = "qwen-vl-max"
     qwen_text_model: str = "qwen3.6-max-preview"
     qwen_image_edit_model: str = "qwen-image-edit-max"
-    qwen_image_generation_model: str = "wan2.5-t2i-preview"
+    qwen_image_generation_model: str = "wan2.2-t2i-plus"
+
+    # --- Object storage (MinIO) ---
+    # Internal endpoint the backend uses to talk to MinIO (docker service name in compose,
+    # 127.0.0.1:9000 when running uvicorn directly on the host).
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_bucket: str = "images"
+    minio_secure: bool = False
+    # Public base URL the *browser* uses to fetch stored images. Persisted image URLs are
+    # built as f"{minio_public_url}/{minio_bucket}/{key}". DashScope never sees these — the
+    # backend resolves them to inline data: URIs at call time (Alibaba can't reach localhost).
+    minio_public_url: str = "http://localhost:9000"
 
     qdrant_url: str = "http://127.0.0.1:6333"
     qdrant_collection: str = "style_refs"

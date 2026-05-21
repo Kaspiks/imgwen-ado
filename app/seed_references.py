@@ -9,7 +9,6 @@ Usage:
 
 from __future__ import annotations
 
-import base64
 import mimetypes
 import sys
 import uuid
@@ -17,6 +16,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.services.dashscope_qwen import DashScopeClient
+from app.services.object_storage import storage as object_storage
 from app.services.qdrant_reference_search import QdrantReferenceSearch
 
 FRONTEND_PUBLIC = Path(__file__).resolve().parent.parent / "frontend" / "public"
@@ -44,13 +44,6 @@ REFERENCES: list[dict[str, object]] = [
         "tags": ["minimalism", "interior", "pastel", "pink", "blue", "styling", "texture"],
     },
 ]
-
-
-def _file_to_data_uri(path: Path) -> str:
-    mime = mimetypes.guess_type(str(path))[0] or "image/png"
-    raw = path.read_bytes()
-    b64 = base64.standard_b64encode(raw).decode("ascii")
-    return f"data:{mime};base64,{b64}"
 
 
 def main() -> None:
@@ -84,7 +77,12 @@ def main() -> None:
         seed_key = str(ref["seed_key"])
         point_id = str(uuid.uuid5(SEED_NAMESPACE, seed_key))
 
-        data_uri = _file_to_data_uri(file_path)
+        try:
+            ct = mimetypes.guess_type(str(file_path))[0] or "image/png"
+            stored_url = object_storage().put_bytes(file_path.read_bytes(), content_type=ct)
+        except Exception as exc:
+            print(f"[seed_references] Object storage upload failed for {ref['file']}: {exc}")
+            continue
 
         try:
             vector = client.embed_text(
@@ -99,7 +97,7 @@ def main() -> None:
 
         try:
             search.ingest_reference(
-                image_url=data_uri,
+                image_url=stored_url,
                 description=description,
                 vector=vector,
                 tags=tags,

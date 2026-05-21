@@ -25,6 +25,14 @@ services:
       DEBUGPY_PORT: ${DEBUGPY_PORT:-5678}
       DATABASE_URL: postgresql+psycopg://app:app@postgres:5432/app_db
       QDRANT_URL: http://qdrant:6333
+      # Object storage (MinIO). Backend uses the internal endpoint; the browser fetches
+      # images via MINIO_PUBLIC_URL (host-reachable). DashScope never sees these URLs.
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-images}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
       # Alibaba MaaS / Model Studio — set in .env (see .env.example). Optional split: reasoning vs editing gateway.
       DASHSCOPE_BASE_HTTP_API_URL: ${DASHSCOPE_BASE_HTTP_API_URL:-https://dashscope-intl.aliyuncs.com/api/v1}
       DASHSCOPE_REASONING_BASE_HTTP_API_URL: ${DASHSCOPE_REASONING_BASE_HTTP_API_URL:-}
@@ -41,12 +49,14 @@ services:
       QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen-vl-max}
       QWEN_TEXT_MODEL: ${QWEN_TEXT_MODEL:-qwen-plus-latest}
       QWEN_IMAGE_EDIT_MODEL: ${QWEN_IMAGE_EDIT_MODEL:-qwen-image-edit-max}
-      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-wan2.5-t2i-preview}
+      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-wan2.2-t2i-plus}
       QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v4}
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
+        condition: service_started
+      minio:
         condition: service_started
     networks:
       - app-network

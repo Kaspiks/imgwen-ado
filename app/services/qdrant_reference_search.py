@@ -111,8 +111,3 @@ class QdrantReferenceSearch:
                 break
 
         return urls
-
-    def list_references(self) -> list[dict[str, Any]]:
-        """Return all references in the collection."""
-
-        return self.client.list_collections(collection_name=self.collection)

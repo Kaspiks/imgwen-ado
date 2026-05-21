@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import json
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -9,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models.users import Client
+from app.services.object_storage import storage as object_storage
 from app.schemas.edit_flow import (
     EditFlowChatRequest,
     EditFlowChatResponse,
@@ -46,7 +46,7 @@ def _normalize_ref_urls(urls: list[str], *, max_refs: int = 2) -> list[str]:
 ALLOWED_IMAGE_CT = frozenset(
     {"image/jpeg", "image/png", "image/webp", "image/gif"},
 )
-MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 def _session_out(db: Session, session_id: int) -> EditFlowSessionOut:
@@ -80,19 +80,21 @@ async def upload_image(
     file: UploadFile = File(...),
     _current_user: Client = Depends(get_current_user),
 ) -> ImageUploadResponse:
-    """Upload a local image; returns a data URL usable as base_image_url or reference (no public hosting required)."""
+    """Upload a local image to object storage; returns a hosted URL usable as base_image_url or reference."""
     raw = await file.read()
     if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Image too large (max 2MB for embedded data URLs).")
+        raise HTTPException(status_code=413, detail="Image too large (max 10MB).")
     ct = (file.content_type or "application/octet-stream").split(";")[0].strip().lower()
     if ct not in ALLOWED_IMAGE_CT:
         raise HTTPException(
             status_code=400,
             detail=f"Unsupported content type {file.content_type!r}. Use JPEG, PNG, WebP, or GIF.",
         )
-    b64 = base64.standard_b64encode(raw).decode("ascii")
-    data_url = f"data:{ct};base64,{b64}"
-    return ImageUploadResponse(url=data_url, content_type=ct, size_bytes=len(raw))
+    try:
+        url = object_storage().put_bytes(raw, content_type=ct)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Image storage failed: {exc}") from exc
+    return ImageUploadResponse(url=url, content_type=ct, size_bytes=len(raw))
 
 
 @router.get("/references", response_model=ReferenceLibraryListOut)

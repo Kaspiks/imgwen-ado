@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.config import settings
 from app.services.dashscope_qwen import DashScopeClient
+from app.services.object_storage import resolve_for_model
 from app.services.qdrant_reference_search import QdrantReferenceSearch
+
+# The text planner is an LLM: it cannot interpret an image, so a base64 data URI
+# is just dead weight that blows past the gateway's input-length and request-body
+# limits (InvalidParameter: input length [1, 258048]; "Exceeded limit on max bytes
+# to request body : 6291456"). Strip any data: URI before it reaches the planner.
+_DATA_URI_RE = re.compile(r"data:[^;,\s]+;base64,[A-Za-z0-9+/=]+")
+# Generous cap on the whole planner user message; real prompts are a few KB.
+_MAX_PLANNER_USER_CHARS = 100_000
+
+
+def _scrub_for_planner(text: str) -> str:
+    """Remove base64 data URIs from text destined for the text planner."""
+    return _DATA_URI_RE.sub("[image omitted]", text)
 
 
 @dataclass
@@ -206,6 +221,10 @@ class ImageEditWorkflow:
 
         warnings: list[str] = []
 
+        # Persisted references are short MinIO URLs that Alibaba cannot fetch; resolve
+        # the base image to an inline data: URI for every DashScope call below.
+        base_image_url = resolve_for_model(base_image_url)
+
         etype = self._edit_type(user_prompt)
 
         # Auto-select negative prompt when the caller leaves it empty.
@@ -270,8 +289,30 @@ class ImageEditWorkflow:
             if u not in merged and len(merged) < max_refs_for_edit:
                 merged.append(u)
 
+        # Resolve persisted MinIO reference URLs to inline data: URIs for the vision
+        # describer and the image-edit model (Alibaba cannot fetch local MinIO URLs).
+        merged = [resolve_for_model(u) for u in merged]
+
+        # Only feed the planner the *textual* fields of each retrieved reference.
+        # The raw payload also carries `image_url`, which is frequently a base64
+        # `data:image/...` URI (seeded refs and uploads are stored that way); dumping
+        # those into the text prompt blows past the model's input-length limit
+        # (InvalidParameter: Range of input length should be [1, 258048]).
+        def _ref_summary(row: dict[str, Any]) -> str:
+            parts: list[str] = []
+            desc = row.get("description")
+            if isinstance(desc, str) and desc.strip():
+                parts.append(desc.strip())
+            tags = row.get("tags")
+            if isinstance(tags, list) and tags:
+                parts.append("tags: " + ", ".join(str(t) for t in tags))
+            score = row.get("score")
+            if isinstance(score, (int, float)):
+                parts.append(f"score: {score:.3f}")
+            return " | ".join(parts) if parts else "(no description)"
+
         ref_context = "\n".join(
-            f"- {row}" for row in retrieved[: min(8, len(retrieved))]
+            f"- {_ref_summary(row)}" for row in retrieved[: min(8, len(retrieved))]
         )
 
         # Extract a precise description from each reference image using a prompt
@@ -355,6 +396,14 @@ class ImageEditWorkflow:
             "The result must be the SAME photo with only the requested attribute changed — never a substitution "
             "of the whole image with the reference."
         )
+
+        # Defensive: a base64 data URI can reach the planner via the transcript
+        # (e.g. a user pastes one) or the vision JSON. Strip it and hard-cap the
+        # message so the request never exceeds the gateway's body/input limits.
+        planner_user = _scrub_for_planner(planner_user)
+        if len(planner_user) > _MAX_PLANNER_USER_CHARS:
+            planner_user = planner_user[:_MAX_PLANNER_USER_CHARS] + "\n\n[truncated]"
+            warnings.append("Planner input was truncated to stay within the model's request-size limit.")
 
         plan, planner_reasoning = self.reasoning.text_json_completion(
             model=settings.qwen_text_model,
