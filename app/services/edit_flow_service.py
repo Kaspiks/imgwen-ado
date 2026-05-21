@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -10,8 +11,11 @@ from app.models.chat_session import ChatSession, ChatSessionStatus
 from app.models.edit_flow import EditFlowMessage, EditFlowPhase, EditFlowSession
 from app.models.edit_job import EditJob, EditJobStatus
 from app.models.image import Image
+from app.models.project import Project
 from app.services.dashscope_qwen import DashScopeClient
 from app.workflows.image_edit_workflow import ImageEditWorkflow
+
+logger = logging.getLogger(__name__)
 
 
 class EditFlowService:
@@ -22,7 +26,9 @@ class EditFlowService:
 
     REASONING_CHAT_SYSTEM = (
         "You are a vision-language assistant helping the user plan an image edit. You can see the base image "
-        "in every user message. Discuss goals, constraints, style, and feasibility.\n\n"
+        "in every user message. When the user has attached reference images, they are included after the base "
+        "image and labelled in the message text — you CAN see them; describe and use them when asked. "
+        "Discuss goals, constraints, style, and feasibility.\n\n"
         "When you need the user to attach 1–2 reference images, end your reply with a single line containing exactly:\n"
         f"{REF_REQUEST_MARKER}\n\n"
         "When the user is undecided and would benefit from seeing concrete options, you may proactively "
@@ -76,6 +82,7 @@ class EditFlowService:
         base_image_url: str,
         history: list[EditFlowMessage],
         new_user_text: str,
+        reference_urls: list[str] | None = None,
     ) -> list[dict]:
         messages: list[dict] = [
             {"role": "system", "content": [{"text": cls.REASONING_CHAT_SYSTEM}]},
@@ -101,12 +108,25 @@ class EditFlowService:
                     }
                 )
 
-        messages.append(
-            {
-                "role": "user",
-                "content": [{"image": base_image_url}, {"text": new_user_text}],
-            }
-        )
+        refs = [u for u in (reference_urls or []) if isinstance(u, str) and u.strip()][:3]
+        content: list[dict] = [{"image": base_image_url}, *({"image": u} for u in refs)]
+
+        if len(refs) == 1:
+            note = (
+                "[Image 1 is the base photo to edit. The next image is a reference image the user "
+                "attached — treat it as style/appearance guidance, not as the scene to edit.]\n\n"
+            )
+        elif refs:
+            note = (
+                f"[Image 1 is the base photo to edit. The next {len(refs)} images are reference "
+                "images the user attached — treat them as style/appearance guidance, not as the "
+                "scene to edit.]\n\n"
+            )
+        else:
+            note = ""
+
+        content.append({"text": note + new_user_text})
+        messages.append({"role": "user", "content": content})
 
         return messages
 
@@ -202,6 +222,15 @@ class EditFlowService:
         if session is None:
             raise KeyError("session not found")
 
+        # Once an edit has run, any further message means the user is iterating
+        # (e.g. clicking Disagree). Re-open the flow so they can refine and run
+        # another edit, which chains from the previous result.
+        if session.phase == EditFlowPhase.edit_completed:
+            session.phase = EditFlowPhase.chatting
+            self.db.add(session)
+            self.db.commit()
+            self.db.refresh(session)
+
         history = self.list_messages(session_id)
         reasoning_key = settings.dashscope_reasoning_key()
 
@@ -214,6 +243,7 @@ class EditFlowService:
             base_image_url=session.base_image_url,
             history=history,
             new_user_text=user_message.strip(),
+            reference_urls=list(session.reference_urls or []),
         )
 
         self.append_message(session_id=session_id, role="user", content=user_message.strip())
@@ -399,7 +429,13 @@ class EditFlowService:
                 user_goal=user_goal,
             )
         except Exception:
+            logger.exception("Failed to record relational edit for session %s", session_id)
             self.db.rollback()
+
+        if result.edited_image_urls:
+            session.base_image_url = result.edited_image_urls[0]
+            self.db.add(session)
+            self.db.commit()
 
         return payload
 

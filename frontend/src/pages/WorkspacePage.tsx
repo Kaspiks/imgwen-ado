@@ -908,16 +908,6 @@ function WorkspaceEditor({
         <div className="mb-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">References &amp; assets</p>
-            {sessionId && (
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => refAFileRef.current?.click()}
-                className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-700 shadow-sm hover:bg-zinc-50 disabled:opacity-40"
-              >
-                + Upload reference
-              </button>
-            )}
           </div>
           {(() => {
             const pendingRef = preloadedRef && !sessionId ? [preloadedRef] : [];
@@ -951,7 +941,7 @@ function WorkspaceEditor({
             return (
               <p className="rounded-xl border border-dashed border-zinc-300 bg-white/60 px-4 py-5 text-center text-xs text-zinc-400">
                 {sessionId
-                  ? "No references added yet. Upload or select references from the chat."
+                  ? "No references added yet. Select references from the chat."
                   : "Start a session to add references."}
               </p>
             );

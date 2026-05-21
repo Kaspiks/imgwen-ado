@@ -121,7 +121,7 @@ class DashScopeClient:
 
         elif step_lower == "image_generation":
             model_var = "QWEN_IMAGE_GENERATION_MODEL"
-            api = "ImageGeneration (qwen-image-2.0-pro) or ImageSynthesis (legacy wanx)"
+            api = "ImageGeneration (wan2.5/2.6 text-to-image) or ImageSynthesis (legacy wanx)"
 
         else:
             model_var = "QWEN_VISION_MODEL, QWEN_TEXT_MODEL, QWEN_IMAGE_EDIT_MODEL"
@@ -157,7 +157,7 @@ class DashScopeClient:
 
         if "url error" in low and step.lower() == "image_generation":
             lines.append(
-                "qwen-image-2.0-pro uses ImageGeneration on the public DashScope endpoint "
+                "wan2.5/2.6 text-to-image uses ImageGeneration on the public DashScope endpoint "
                 "(https://dashscope-intl.aliyuncs.com/api/v1), not workspace MaaS URLs. "
                 "Set DASHSCOPE_GENERATION_BASE_HTTP_API_URL and DASHSCOPE_GENERATION_API_KEY "
                 "(or DASHSCOPE_OPENAI_API_KEY) to your intl pay-as-you-go sk-... key. "
@@ -544,10 +544,11 @@ class DashScopeClient:
         return self.parse_json_object(self.generation_assistant_text(resp)), None
 
     @staticmethod
-    def _uses_wan_image_generation_api(model: str) -> bool:
-        """wan2.6+ text-to-image uses ImageGeneration; older wanx uses ImageSynthesis."""
+    def _uses_image_generation_api(model: str) -> bool:
+        """Multimodal wan image models (e.g. wan2.6-image) use the messages-based
+        ImageGeneration API; pure text-to-image models (wan*-t2i, legacy wanx) use ImageSynthesis."""
         m = model.lower()
-        return m.startswith("wan2.6") or m.startswith("wan2.5")
+        return m.startswith("wan2.") and "t2i" not in m
 
     def generate_image_from_text(
         self,
@@ -559,13 +560,13 @@ class DashScopeClient:
     ) -> list[str]:
         self._configure()
 
-        if self._uses_wan_image_generation_api(model):
+        if self._uses_image_generation_api(model):
             try:
                 from dashscope.aigc.image_generation import ImageGeneration
                 from dashscope.api_entities.dashscope_response import Message
             except ImportError as exc:
                 raise RuntimeError(
-                    "wan2.6 text-to-image requires dashscope>=1.25.8 (ImageGeneration SDK). "
+                    "wan2.5/2.6 text-to-image requires dashscope>=1.25.8 (ImageGeneration SDK). "
                     "Run: pip install -U 'dashscope>=1.25.8'"
                 ) from exc
 

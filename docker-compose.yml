@@ -41,7 +41,7 @@ services:
       QWEN_VISION_MODEL: ${QWEN_VISION_MODEL:-qwen-vl-max}
       QWEN_TEXT_MODEL: ${QWEN_TEXT_MODEL:-qwen-plus-latest}
       QWEN_IMAGE_EDIT_MODEL: ${QWEN_IMAGE_EDIT_MODEL:-qwen-image-edit-max}
-      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-qwen-image-2.0-pro}
+      QWEN_IMAGE_GENERATION_MODEL: ${QWEN_IMAGE_GENERATION_MODEL:-wan2.5-t2i-preview}
       QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v4}
     depends_on:
       postgres:

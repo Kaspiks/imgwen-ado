@@ -76,6 +76,7 @@ export function EvolutionTimeline({
             day: "numeric",
             year: "numeric",
           });
+
           const timeStr = date.toLocaleTimeString(undefined, {
             hour: "numeric",
             minute: "2-digit",
@@ -102,9 +103,15 @@ export function EvolutionTimeline({
                 <span className="inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500">
                   Edit #{session.edit_sequence_number}
                 </span>
-                <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600">
-                  Edit completed
-                </span>
+                {session.edited_image_url ? (
+                  <span className="inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-600">
+                    Edit completed
+                  </span>
+                ) : (
+                  <span className="inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-600">
+                    No edit yet
+                  </span>
+                )}
               </div>
 
               <p className={`mt-0.5 text-sm font-semibold ${isLatest ? "text-accent" : "text-zinc-900"}`}>
