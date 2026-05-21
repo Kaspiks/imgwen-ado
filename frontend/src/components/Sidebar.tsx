@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink, useSearchParams } from "react-router-dom";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch } from "../lib/api";
 
 const subLink = ({ isActive }: { isActive: boolean }) =>
   `block rounded-lg px-3 py-2 text-sm ${
@@ -17,7 +17,7 @@ export function Sidebar() {
     if (!projectId) return;
 
     let cancelled = false;
-    fetch(`${API_BASE}/projects/${projectId}`)
+    apiFetch(`${API_BASE}/projects/${projectId}`)
       .then((r) => (r.ok ? (r.json() as Promise<{ project_name: string }>) : null))
       .then((p) => {
         if (!cancelled && p) setProjectName(p.project_name);

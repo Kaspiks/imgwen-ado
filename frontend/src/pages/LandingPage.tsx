@@ -1,8 +1,6 @@
 import { Link } from "react-router-dom";
 import { Card } from "../components/Card";
 import { WorkflowStrip } from "../components/WorkflowStrip";
-import { MOCKUPS } from "../mockups";
-
 export function LandingPage() {
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-10 sm:px-6">
@@ -30,19 +28,11 @@ export function LandingPage() {
               View projects
             </Link>
           </div>
-          <p className="mt-4 max-w-xl text-sm text-zinc-500">
-            <span className="font-semibold text-zinc-800">Reasoning and image-edit</span> use the backend only
-            from{" "}
-            <Link to="/workspace" className="font-semibold text-accent hover:underline">
-              Workspace
-            </Link>
-            . Projects and style screens are layout mocks until wired.
-          </p>
         </div>
         <div className="relative">
           <img
-            src={MOCKUPS.landing}
-            alt="Landing concept reference"
+            src="/before-and-after-photoshop-pictures-30.jpg"
+            alt="Before and after editing example"
             className="w-full rounded-2xl border border-zinc-200/80 shadow-lg"
           />
           <div className="pointer-events-none absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5" />

@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     )
     database_url: str = "postgresql+psycopg://app:app@127.0.0.1:5432/app_db"
 
+    jwt_secret_key: str = "key-for-project"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 1440
+
     # Alibaba Cloud Model Studio / MaaS — DashScope-compatible HTTP API root (.../api/v1)
     dashscope_api_key: str = ""
     # Optional: separate keys for reasoning (VL, embeddings, planner) vs image-edit model

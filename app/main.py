@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine, get_db
-from app.routers import edit_flow, project, workflow
+from app.routers import auth, edit_flow, project, workflow
 
 
 @asynccontextmanager
@@ -15,6 +15,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="imgwen-ado", lifespan=lifespan)
+app.include_router(auth.router, prefix="/api")
 app.include_router(workflow.router, prefix="/api")
 app.include_router(edit_flow.router, prefix="/api")
 app.include_router(project.router, prefix="/api")

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { EvolutionTimeline } from "../components/EvolutionTimeline";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch } from "../lib/api";
 
 export function HistoryPage() {
   const [params] = useSearchParams();
@@ -13,7 +13,7 @@ export function HistoryPage() {
     setProjectName(null);
     if (!projectIdParam) return;
     let cancelled = false;
-    fetch(`${API_BASE}/projects/${projectIdParam}`)
+    apiFetch(`${API_BASE}/projects/${projectIdParam}`)
       .then((r) => (r.ok ? (r.json() as Promise<{ project_name: string }>) : null))
       .then((p) => {
         if (!cancelled && p) setProjectName(p.project_name);

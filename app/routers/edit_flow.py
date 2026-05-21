@@ -6,7 +6,9 @@ import json
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
+from app.models.users import Client
 from app.schemas.edit_flow import (
     EditFlowChatRequest,
     EditFlowChatResponse,
@@ -74,7 +76,10 @@ def _session_out(db: Session, session_id: int) -> EditFlowSessionOut:
 
 
 @router.post("/upload", response_model=ImageUploadResponse)
-async def upload_image(file: UploadFile = File(...)) -> ImageUploadResponse:
+async def upload_image(
+    file: UploadFile = File(...),
+    _current_user: Client = Depends(get_current_user),
+) -> ImageUploadResponse:
     """Upload a local image; returns a data URL usable as base_image_url or reference (no public hosting required)."""
     raw = await file.read()
     if len(raw) > MAX_UPLOAD_BYTES:
@@ -91,7 +96,7 @@ async def upload_image(file: UploadFile = File(...)) -> ImageUploadResponse:
 
 
 @router.get("/references", response_model=ReferenceLibraryListOut)
-def get_reference_library() -> ReferenceLibraryListOut:
+def get_reference_library(_current_user: Client = Depends(get_current_user)) -> ReferenceLibraryListOut:
     """List all style references stored in the Qdrant library."""
 
     rows = ReferenceLibrary().list()
@@ -101,7 +106,10 @@ def get_reference_library() -> ReferenceLibraryListOut:
 
 
 @router.post("/references/ingest", response_model=ReferenceIngestResponse)
-def post_ingest_reference(body: ReferenceIngestRequest) -> ReferenceIngestResponse:
+def post_ingest_reference(
+    body: ReferenceIngestRequest,
+    _current_user: Client = Depends(get_current_user),
+) -> ReferenceIngestResponse:
     """Embed a reference image into Qdrant for future retrieval and Style Exploration."""
 
     try:
@@ -127,6 +135,7 @@ def post_ingest_reference(body: ReferenceIngestRequest) -> ReferenceIngestRespon
 @router.get("/sessions", response_model=EditFlowSessionOut)
 def get_latest_project_session(
     project_id: int = Query(..., description="Return the most recent session for this project"),
+    _current_user: Client = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EditFlowSessionOut:
     session = EditFlowService(db).get_latest_for_project(project_id)
@@ -138,6 +147,7 @@ def get_latest_project_session(
 @router.get("/project-history", response_model=EditFlowProjectHistoryOut)
 def get_project_history(
     project_id: int = Query(..., description="List all edit sessions for this project, newest first"),
+    _current_user: Client = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EditFlowProjectHistoryOut:
     sessions = EditFlowService(db).list_for_project(project_id)
@@ -166,7 +176,11 @@ def get_project_history(
 
 
 @router.post("/sessions", response_model=EditFlowSessionOut)
-def create_session(body: EditFlowSessionCreate, db: Session = Depends(get_db)) -> EditFlowSessionOut:
+def create_session(
+    body: EditFlowSessionCreate,
+    _current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EditFlowSessionOut:
     row = EditFlowService(db).create_session(
         base_image_url=body.base_image_url,
         preloaded_reference_url=body.preloaded_reference_url,
@@ -177,12 +191,21 @@ def create_session(body: EditFlowSessionCreate, db: Session = Depends(get_db)) -
 
 
 @router.get("/sessions/{session_id}", response_model=EditFlowSessionOut)
-def get_session(session_id: int, db: Session = Depends(get_db)) -> EditFlowSessionOut:
+def get_session(
+    session_id: int,
+    _current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EditFlowSessionOut:
     return _session_out(db, session_id)
 
 
 @router.post("/sessions/{session_id}/chat", response_model=EditFlowChatResponse)
-def post_chat(session_id: int, body: EditFlowChatRequest, db: Session = Depends(get_db)) -> EditFlowChatResponse:
+def post_chat(
+    session_id: int,
+    body: EditFlowChatRequest,
+    _current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EditFlowChatResponse:
     try:
         assistant, phase, requested, generated = EditFlowService(db).post_chat_turn(
             session_id=session_id, user_message=body.message
@@ -208,6 +231,7 @@ def post_chat(session_id: int, body: EditFlowChatRequest, db: Session = Depends(
 def post_references(
     session_id: int,
     body: EditFlowReferencesRequest,
+    _current_user: Client = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> EditFlowReferencesResponse:
     urls = _normalize_ref_urls(body.urls, max_refs=2)
@@ -224,7 +248,11 @@ def post_references(
 
 
 @router.post("/sessions/{session_id}/run-edit", response_model=EditFlowRunEditResponse)
-def post_run_edit(session_id: int, db: Session = Depends(get_db)) -> EditFlowRunEditResponse:
+def post_run_edit(
+    session_id: int,
+    _current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> EditFlowRunEditResponse:
     try:
         payload = EditFlowService(db).run_image_edit(session_id=session_id)
     except KeyError:

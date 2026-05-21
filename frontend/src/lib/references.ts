@@ -1,4 +1,4 @@
-import { API_BASE } from "./api";
+import { API_BASE, apiFetch } from "./api";
 
 export type ReferenceLibraryItem = {
   point_id: string;
@@ -74,7 +74,7 @@ export function libraryItemToTile(item: ReferenceLibraryItem): StyleTile {
 }
 
 export async function fetchReferenceLibrary(): Promise<ReferenceLibraryItem[]> {
-  const res = await fetch(`${API_BASE}/workflow/edit-flow/references`);
+  const res = await apiFetch(`${API_BASE}/workflow/edit-flow/references`);
   if (!res.ok) throw new Error(await readError(res));
   const body = (await res.json()) as { references: ReferenceLibraryItem[] };
   return body.references ?? [];
@@ -84,7 +84,7 @@ export async function ingestReferenceToLibrary(
   imageUrl: string,
   tags: string[] = ["Uploaded"],
 ): Promise<ReferenceLibraryItem> {
-  const res = await fetch(`${API_BASE}/workflow/edit-flow/references/ingest`, {
+  const res = await apiFetch(`${API_BASE}/workflow/edit-flow/references/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ image_url: imageUrl, description: "", tags }),

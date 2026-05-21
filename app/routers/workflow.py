@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth import get_current_user
+from app.models.users import Client
 from app.schemas.workflow import ImageEditWorkflowRequest, ImageEditWorkflowResponse
 from app.workflows.image_edit_workflow import ImageEditWorkflow
 
@@ -11,7 +13,10 @@ router = APIRouter(prefix="/workflow", tags=["workflow"])
 
 
 @router.post("/image-edit", response_model=ImageEditWorkflowResponse)
-def post_image_edit_workflow(body: ImageEditWorkflowRequest) -> ImageEditWorkflowResponse:
+def post_image_edit_workflow(
+    body: ImageEditWorkflowRequest,
+    _current_user: Client = Depends(get_current_user),
+) -> ImageEditWorkflowResponse:
     try:
         result = ImageEditWorkflow().run(
             user_prompt=body.user_prompt,

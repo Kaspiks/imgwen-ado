@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.models.chat_session import ChatSession
 from app.models.image import Image
@@ -21,27 +22,15 @@ from app.schemas.project import (
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
-DEMO_USER_ID = "demo"
-
-
-def _ensure_demo_client(db: Session) -> Client:
-    client = db.query(Client).filter(Client.user_id == DEMO_USER_ID).first()
-    if client is None:
-        client = Client(
-            user_id=DEMO_USER_ID,
-            username="demo",
-            email="demo@imgwen.local",
-            password_hash="!nologin",
-        )
-        db.add(client)
-        db.flush()
-    return client
-
 
 @router.get("", response_model=ProjectListOut)
-def list_projects(db: Session = Depends(get_db)) -> ProjectListOut:
+def list_projects(
+    current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectListOut:
     projects = (
         db.query(Project)
+        .filter(Project.user_id == current_user.user_id)
         .order_by(Project.creation_date.desc())
         .all()
     )
@@ -49,19 +38,24 @@ def list_projects(db: Session = Depends(get_db)) -> ProjectListOut:
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
-def get_project(project_id: int, db: Session = Depends(get_db)) -> ProjectOut:
+def get_project(
+    project_id: int,
+    current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
     project = db.query(Project).filter(Project.id == project_id).first()
-
-    if project is None:
+    if project is None or project.user_id != current_user.user_id:
         raise HTTPException(status_code=404, detail="Project not found")
-
     return ProjectOut.model_validate(project)
 
 
 @router.post("", response_model=ProjectOut, status_code=201)
-def create_project(body: ProjectCreate, db: Session = Depends(get_db)) -> ProjectOut:
-    _ensure_demo_client(db)
-    project = Project(project_name=body.project_name, user_id=DEMO_USER_ID)
+def create_project(
+    body: ProjectCreate,
+    current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectOut:
+    project = Project(project_name=body.project_name, user_id=current_user.user_id)
     db.add(project)
     db.commit()
     db.refresh(project)
@@ -69,9 +63,13 @@ def create_project(body: ProjectCreate, db: Session = Depends(get_db)) -> Projec
 
 
 @router.get("/{project_id}/sessions", response_model=ProjectSessionsOut)
-def get_project_sessions(project_id: int, db: Session = Depends(get_db)) -> ProjectSessionsOut:
+def get_project_sessions(
+    project_id: int,
+    current_user: Client = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProjectSessionsOut:
     project = db.query(Project).filter(Project.id == project_id).first()
-    if project is None:
+    if project is None or project.user_id != current_user.user_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
     sessions = (
@@ -121,10 +119,11 @@ def get_project_sessions(project_id: int, db: Session = Depends(get_db)) -> Proj
 def create_chat_session(
     project_id: int,
     body: ChatSessionCreate,
+    current_user: Client = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ChatSessionOut:
     project = db.query(Project).filter(Project.id == project_id).first()
-    if project is None:
+    if project is None or project.user_id != current_user.user_id:
         raise HTTPException(status_code=404, detail="Project not found")
 
     session = ChatSession(

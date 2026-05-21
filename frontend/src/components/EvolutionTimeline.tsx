@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch } from "../lib/api";
 
 type ChatSessionSummary = {
   id: number;
@@ -32,7 +32,7 @@ export function EvolutionTimeline({
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE}/projects/${projectId}/sessions`)
+    apiFetch(`${API_BASE}/projects/${projectId}/sessions`)
       .then((r) => {
         if (!r.ok) throw new Error(`Failed to load history (${r.status})`);
         return r.json() as Promise<ProjectSessionsPayload>;

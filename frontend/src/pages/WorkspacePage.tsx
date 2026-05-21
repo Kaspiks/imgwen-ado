@@ -4,7 +4,7 @@ import { Card } from "../components/Card";
 import { ChatReferencePicker } from "../components/ChatReferencePicker";
 import { CreateProjectModal } from "../components/CreateProjectModal";
 import { MOCKUPS } from "../mockups";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch } from "../lib/api";
 import {
   ingestReferenceToLibrary,
   ingestReferenceToLibraryQuietly,
@@ -34,7 +34,7 @@ function ProjectPicker() {
   const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/projects`)
+    apiFetch(`${API}/projects`)
       .then((r) => (r.ok ? (r.json() as Promise<{ projects: ProjectItem[] }>) : Promise.reject()))
       .then((d) => setProjects(d.projects))
       .catch(() => setProjects([]))
@@ -201,7 +201,7 @@ function WorkspaceEditor({
   useEffect(() => {
     let cancelled = false;
     setProjectName(null);
-    fetch(`${API}/projects/${projectId}`)
+    apiFetch(`${API}/projects/${projectId}`)
       .then((r) => (r.ok ? (r.json() as Promise<ProjectItem>) : null))
       .then((p) => {
         if (!cancelled && p) setProjectName(p.project_name);
@@ -215,7 +215,7 @@ function WorkspaceEditor({
   // Restore the most recent session for this project on mount.
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API}/workflow/edit-flow/sessions?project_id=${projectId}`)
+    apiFetch(`${API}/workflow/edit-flow/sessions?project_id=${projectId}`)
       .then((r) => (r.ok ? (r.json() as Promise<SessionPayload>) : null))
       .then((s) => {
         if (!cancelled && s) {
@@ -254,14 +254,14 @@ function WorkspaceEditor({
   const uploadImageFile = async (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch(`${API}/workflow/edit-flow/upload`, { method: "POST", body: fd });
+    const res = await apiFetch(`${API}/workflow/edit-flow/upload`, { method: "POST", body: fd });
     if (!res.ok) throw new Error(await readError(res));
     const j = (await res.json()) as { url: string };
     return j.url;
   };
 
   const syncSession = useCallback(async (id: number) => {
-    const res = await fetch(`${API}/workflow/edit-flow/sessions/${id}`);
+    const res = await apiFetch(`${API}/workflow/edit-flow/sessions/${id}`);
     if (!res.ok) throw new Error(await readError(res));
     const s = (await res.json()) as SessionPayload;
     setPhase(s.phase);
@@ -349,7 +349,7 @@ function WorkspaceEditor({
         }
         payload.preloaded_reference_url = refUrl;
       }
-      const res = await fetch(`${API}/workflow/edit-flow/sessions`, {
+      const res = await apiFetch(`${API}/workflow/edit-flow/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -379,7 +379,7 @@ function WorkspaceEditor({
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/workflow/edit-flow/sessions/${sessionId}/chat`, {
+      const res = await apiFetch(`${API}/workflow/edit-flow/sessions/${sessionId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim() }),
@@ -452,7 +452,7 @@ function WorkspaceEditor({
     setLoading(true);
     const normalized = urls.filter((u) => u.startsWith("http") || u.startsWith("data:image")).slice(0, 2);
     try {
-      const res = await fetch(`${API}/workflow/edit-flow/sessions/${sessionId}/references`, {
+      const res = await apiFetch(`${API}/workflow/edit-flow/sessions/${sessionId}/references`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls: normalized }),
@@ -500,7 +500,7 @@ function WorkspaceEditor({
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/workflow/edit-flow/sessions/${sessionId}/run-edit`, {
+      const res = await apiFetch(`${API}/workflow/edit-flow/sessions/${sessionId}/run-edit`, {
         method: "POST",
       });
       if (!res.ok) throw new Error(formatUpstreamError(await readError(res)));

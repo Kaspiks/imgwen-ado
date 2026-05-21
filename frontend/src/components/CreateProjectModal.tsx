@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../lib/api";
+import { API_BASE, apiFetch } from "../lib/api";
 
 type ProjectPayload = { id: number; project_name: string };
 
@@ -36,7 +36,7 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/projects`, {
+      const res = await apiFetch(`${API_BASE}/projects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ project_name: trimmed }),
@@ -47,7 +47,7 @@ export function CreateProjectModal({ open, onClose }: { open: boolean; onClose: 
       }
       const project = (await res.json()) as ProjectPayload;
 
-      await fetch(`${API_BASE}/projects/${project.id}/sessions`, {
+      await apiFetch(`${API_BASE}/projects/${project.id}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "Initial session" }),
